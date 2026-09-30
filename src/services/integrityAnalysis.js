@@ -22,14 +22,15 @@ export function analyzeIntegrity(records) {
     const location = clean(record.checkInLocation || record.companyName || record.dealerChannelPartner, 'Blank Location');
     const type = normalizeType(record.type);
     const key = [date, empId.toLowerCase(), location.toLowerCase(), type].join('|');
-    const group = groupsByKey.get(key) || { key, date, empId, employee: clean(record.salesUserName, 'Unnamed employee'), location, type, records: [] };
-    group.records.push(record); groupsByKey.set(key, group);
+    const checkIn = record.checkIn instanceof Date && !Number.isNaN(record.checkIn.getTime()) ? record.checkIn : null;
+    const group = groupsByKey.get(key) || { key, date, empId, employee: clean(record.salesUserName, 'Unnamed employee'), location, type, count: 0, firstCheckIn: null, lastCheckIn: null };
+    group.count += 1;
+    if (checkIn && (!group.firstCheckIn || checkIn < group.firstCheckIn)) group.firstCheckIn = checkIn;
+    if (checkIn && (!group.lastCheckIn || checkIn > group.lastCheckIn)) group.lastCheckIn = checkIn;
+    groupsByKey.set(key, group);
   });
-  const groups = [...groupsByKey.values()].map((group) => {
-    const count = group.records.length;
-    const times = group.records.map((record) => record.checkIn).filter((value) => value instanceof Date && !Number.isNaN(value.getTime())).sort((a, b) => a - b);
-    return { ...group, count, status: statusFor(count), verificationRequired: count > 1, firstCheckIn: times[0] || null, lastCheckIn: times.at(-1) || null };
-  }).sort((a, b) => b.count - a.count || a.employee.localeCompare(b.employee));
+  const groups = [...groupsByKey.values()].map((group) => ({ ...group, status: statusFor(group.count), verificationRequired: group.count > 1 }))
+    .sort((a, b) => b.count - a.count || a.employee.localeCompare(b.employee));
   const typeStats = INTEGRITY_TYPES.map((type) => {
     const typeGroups = groups.filter((group) => group.type === type);
     const total = typeGroups.reduce((sum, group) => sum + group.count, 0);

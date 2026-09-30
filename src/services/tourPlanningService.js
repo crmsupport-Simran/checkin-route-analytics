@@ -28,6 +28,7 @@ const labelFor = (items, field, fallback) => {
 
 const prioritySort = (a, b) => String(a.lastVisit || '9999-12-31').localeCompare(String(b.lastVisit || '9999-12-31'))
   || String(a.companyName || a.customerName || '').localeCompare(String(b.companyName || b.customerName || ''));
+const estimatedRoadKm = (points) => points.slice(1).reduce((sum, point, index) => sum + haversine(points[index], point), 0) * 1.35;
 
 export async function buildDailyTour(dealers, maxVisits, supplied = {}) {
   const config = { ...TOUR_DEFAULTS, ...supplied };
@@ -56,6 +57,7 @@ export async function buildDailyTour(dealers, maxVisits, supplied = {}) {
   // the selected daily list. It is deterministic and avoids treating whichever
   // row appeared first in Excel as a start location.
   const cap = Math.max(0, Number(maxVisits) || 20);
+  const travelLimit = Math.max(0, Number(supplied.dailyTravelLimitKm ?? Infinity));
   const remaining = new Map(candidates.map((dealer) => [dealer.id, dealer]));
   const visits = [];
   let current = basePoint;
@@ -72,11 +74,16 @@ export async function buildDailyTour(dealers, maxVisits, supplied = {}) {
     for (const dealer of ordered) {
       const trial = [...visits, dealer];
       const points = [...(basePoint ? [basePoint] : []), ...trial.map((item) => item.point), ...(basePoint ? [basePoint] : [])];
-      const route = await routePoints(points);
-      if (Number.isFinite(route.km) && route.km <= Number(supplied.dailyTravelLimitKm ?? Infinity)) { chosen = dealer; break; }
+      if (estimatedRoadKm(points) <= travelLimit) { chosen = dealer; break; }
     }
     if (!chosen) break;
     visits.push(chosen); remaining.delete(chosen.id); current = chosen.point;
+  }
+  const routePointsFor = (stops) => [...(basePoint ? [basePoint] : []), ...stops.map((item) => item.point), ...(basePoint ? [basePoint] : [])];
+  let finalRoute = visits.length ? await routePoints(routePointsFor(visits)) : { km: 0, source: 'none' };
+  while (visits.length && (!Number.isFinite(finalRoute.km) || finalRoute.km > travelLimit)) {
+    const removed = visits.pop(); remaining.set(removed.id, removed);
+    finalRoute = visits.length ? await routePoints(routePointsFor(visits)) : { km: 0, source: 'none' };
   }
   const segments = visits.slice(1).map((dealer, index) => haversine(visits[index].point, dealer.point));
   const orderedWithDistances = visits.map((dealer, index) => ({ ...dealer, distanceFromPreviousKm: index ? segments[index - 1] : null }));
@@ -94,7 +101,7 @@ export async function buildDailyTour(dealers, maxVisits, supplied = {}) {
       clusterDealers: cluster.length, outliers: outliers.length, selected: orderedWithDistances.length,
       centroid, primaryMarket: labelFor(cluster, 'city', 'Not available'), district: labelFor(cluster, 'district', 'Not available'), state: labelFor(cluster, 'state', 'Not available'),
       channelPartners: partnerNames, totalHaversineKm, averageHaversineKm: orderedWithDistances.length ? totalHaversineKm / orderedWithDistances.length : 0,
-      maxSegmentKm, medianSegmentKm, geographicSpreadKm: Math.max(...cluster.map((dealer) => haversine(centroid, dealer.point))), status, reason, config,
+      maxSegmentKm, medianSegmentKm, geographicSpreadKm: Math.max(...cluster.map((dealer) => haversine(centroid, dealer.point))), totalRouteKm: finalRoute.km, routingSource: finalRoute.source, status, reason, config,
     },
     debug: {
       algorithm: 'Haversine local-cluster → priority shortlist → central first stop → nearest-neighbour + 2-opt → final OSRM road route',

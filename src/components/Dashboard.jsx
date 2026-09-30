@@ -142,9 +142,9 @@ export default function Dashboard({ report, filters, setFilters, attendance, dea
     return () => { activeRequest = false; };
   }, [eligible, routeVisits]);
 
-  const summaries = useMemo(() => indexes.summaries
-    .filter((row) => (!filters.date || row.dateKey === filters.date) && (!filters.manager || row.manager === filters.manager) && (!filters.type || row.type === filters.type) && (!filters.empId || row.empId === filters.empId))
-    .sort((a, b) => b.visits - a.visits), [indexes.summaries, filters]);
+  const summaries = useMemo(() => indexes.summaries.filter((row) =>
+    (!filters.date || row.dateKey === filters.date) && (!filters.manager || row.manager === filters.manager)
+    && (!filters.type || row.type === filters.type) && (!filters.empId || row.empId === filters.empId)), [indexes.summaries, filters]);
 
   const exportCsv = () => {
     const exportVisits = exportScope === 'all' ? records : exportScope === 'filtered' ? filtered : selectedVisits;
