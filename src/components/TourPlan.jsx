@@ -12,6 +12,7 @@ const planKey = (empId, date) => `tour-plan:${empId}|${date}`;
 const localToday = new Date();
 const today = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`;
 const planDate = (value) => String(value || '').split('-').reverse().join('-');
+const importDate = (value) => { if (value instanceof Date && !Number.isNaN(value.getTime())) return `${String(value.getDate()).padStart(2, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${value.getFullYear()}`; const text = String(value ?? '').trim(); if (!text || text === '0') return ''; if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(text)) return text; if (/^\d{4}-\d{2}-\d{2}/.test(text)) return planDate(text.slice(0, 10)); const date = new Date(text); return Number.isNaN(date.getTime()) ? text : `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`; };
 const mapVisit = (dealer, distanceFromPreviousKm, distanceFromPreviousLabel) => ({ id: dealer.id, start: dealer.point, companyName: dealer.companyName || dealer.customerName, checkInLocation: dealer.address, accountCode: dealer.accountCode, channelPartner: dealer.channelPartner, beat: dealer.beat, distanceFromPreviousKm, distanceFromPreviousLabel, salesUserName: '', empId: '', durationMinutes: 0, basicOrderValue: 0 });
 
 export default function TourPlan({ dealers, report, attendance }) {
@@ -67,18 +68,33 @@ export default function TourPlan({ dealers, report, attendance }) {
     if (!monthlyPlan) return;
     const employee = employees.find((item) => item.empId === empId);
     const employeeName = String(employee?.label || '').replace(new RegExp(`\\s*\\(\\s*${empId}\\s*\\)\\s*$`), '').trim();
+    const checkInsByCustomer = new Map();
+    for (const visit of report?.records || []) {
+      const customerKey = String(visit.typeId || '').trim().toLowerCase();
+      const nameKey = String(visit.companyName || '').trim().toLowerCase();
+      const date = visit.checkIn || visit.date;
+      if (!date) continue;
+      for (const key of [customerKey && `id:${customerKey}`, nameKey && `name:${nameKey}`].filter(Boolean)) {
+        const previous = checkInsByCustomer.get(key);
+        if (!previous || date > (previous.checkIn || previous.date)) checkInsByCustomer.set(key, visit);
+      }
+    }
     const rows = [['User Name', 'User Code', 'Customer Type', 'Company Name', 'Customer Code', 'Mobile', 'Address', 'Last Checkin Date', 'Plan Date(dd-mm-yyyy)']];
     for (const day of Object.values(monthlyPlan.days || {})) {
       for (const dealer of day.visits || []) {
+        const fallback = checkInsByCustomer.get(`id:${String(dealer.accountCode || '').trim().toLowerCase()}`)
+          || checkInsByCustomer.get(`name:${String(dealer.companyName || dealer.customerName || '').trim().toLowerCase()}`);
+        const mobile = dealer.mobile && dealer.mobile !== '0' ? dealer.mobile : dealer.alternateMobile || fallback?.mobile || '';
+        const lastCheckin = importDate(dealer.lastVisit) || importDate(fallback?.checkIn || fallback?.date);
         rows.push([
           employeeName,
           empId,
           dealer.customerType || 'Dealer',
           dealer.companyName || dealer.customerName,
           dealer.accountCode,
-          dealer.mobile,
+          mobile,
           dealer.address,
-          dealer.lastVisit,
+          lastCheckin,
           planDate(day.date),
         ]);
       }
