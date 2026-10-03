@@ -11,7 +11,7 @@ const dateKeyOf = (value) => {
   if (match) return `${match[3]}-${String(match[2]).padStart(2, '0')}-${String(match[1]).padStart(2, '0')}`;
   return '';
 };
-const dateLabel = (key) => { const [year, month, day] = key.split('-'); return `${day}-${month}-${year}`; };
+export const dateLabel = (key) => { const [year, month, day] = key.split('-'); return `${day}-${month}-${year}`; };
 const dayOffset = (key) => { const [year, month, day] = key.split('-').map(Number); return Math.floor(Date.UTC(year, month - 1, day) / 86400000); };
 const safePoint = (point) => Array.isArray(point) && isValidCoordinate(point[0], point[1]) ? [Number(point[0]), Number(point[1])] : null;
 const pointFor = (lat, lng) => { const point = [Number(lat), Number(lng)]; return isValidCoordinate(point[0], point[1]) ? point : null; };

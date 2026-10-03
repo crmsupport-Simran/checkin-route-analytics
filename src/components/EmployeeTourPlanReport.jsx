@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { calculateRouteMetrics } from '../services/routingService';
-import { buildEmployeeTourPlan, enrichRouteAudit } from '../services/employeeTourPlanService';
+import { buildEmployeeTourPlan, enrichRouteAudit, dateLabel } from '../services/employeeTourPlanService';
 import { csvValue } from '../utils/formatUtils';
 
 const monthLabel = (month) => {
