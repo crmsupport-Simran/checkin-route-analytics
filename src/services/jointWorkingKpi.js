@@ -45,12 +45,13 @@ function parseDate(value) {
 export function prepareJointWorkingRows(records = []) {
   const months = new Set();
   const rows = [];
+  const rowsByMonth = new Map();
   for (const record of records) {
     const date = parseDate(record.date) || parseDate(record.dateKey);
     if (!date) continue;
     const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     months.add(month);
-    rows.push({
+    const preparedRow = {
       month,
       day: date.getDate(),
       dateKey: `${month}-${String(date.getDate()).padStart(2, '0')}`,
@@ -60,35 +61,41 @@ export function prepareJointWorkingRows(records = []) {
       seniorLabel: String(record.jointWorkingName ?? '').trim().replace(/\s+/g, ' '),
       type: normalize(record.type),
       distributor: normalize(record.dealerChannelPartnerCode) || normalize(record.dealerChannelPartner) || normalize(record.companyName),
-    });
+    };
+    rows.push(preparedRow);
+    if (!rowsByMonth.has(month)) rowsByMonth.set(month, []);
+    rowsByMonth.get(month).push(preparedRow);
   }
-  return { rows, months: [...months].sort() };
+  return { rows, rowsByMonth, months: [...months].sort() };
 }
 
 const newCounts = () => Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, 0]));
-const newSets = () => Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Set()]));
+const newMaps = () => Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Map()]));
 
 export function calculateJointWorkingKpis(prepared, month) {
-  const q1Sets = newSets();
-  const q3Sets = newSets();
+  const q1BucketTypesBySenior = newMaps();
+  const q3Sets = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Set()]));
   const q2 = newCounts();
-  const q1RowsBySenior = new Map();
+  const q1SeniorLabels = new Map();
   let q1QualifyingRows = 0;
   let q2Dealer = 0;
   let q2Other = 0;
   let q3QualifyingRows = 0;
 
-  for (const row of prepared.rows) {
-    if (row.month !== month || row.day > 30) continue;
+  for (const row of (prepared.rowsByMonth?.get(month) || [])) {
+    if (row.day > 30) continue;
     const matchingBuckets = KPI_BUCKETS.filter(({ from, to }) => row.day >= from && row.day <= to);
     const isJuniorJoint = JUNIOR_DESIGNATIONS.has(row.designation) && row.jointWorking === 'YES' && Boolean(row.seniorName);
     if (isJuniorJoint) {
       q1QualifyingRows += 1;
-      let senior = q1RowsBySenior.get(row.seniorName);
-      if (!senior) { senior = { label: row.seniorLabel, dates: new Set() }; q1RowsBySenior.set(row.seniorName, senior); }
-      senior.dates.add(row.dateKey);
-      const seniorDate = `${row.seniorName}|${row.dateKey}`;
-      for (const bucket of matchingBuckets) q1Sets[bucket.key].add(seniorDate);
+      if (row.type) {
+        if (!q1SeniorLabels.has(row.seniorName)) q1SeniorLabels.set(row.seniorName, row.seniorLabel);
+        for (const bucket of matchingBuckets) {
+          const managerTypes = q1BucketTypesBySenior[bucket.key].get(row.seniorName) || new Set();
+          managerTypes.add(row.type);
+          q1BucketTypesBySenior[bucket.key].set(row.seniorName, managerTypes);
+        }
+      }
       if (row.type === 'DEALER' || row.type === 'OTHER') {
         for (const bucket of matchingBuckets) q2[bucket.key] += 1;
         if (row.type === 'DEALER') q2Dealer += 1;
@@ -101,18 +108,26 @@ export function calculateJointWorkingKpis(prepared, month) {
     }
   }
 
-  const q1BySenior = [...q1RowsBySenior.values()].map(({ label, dates }) => ({ senior: label, visitDays: dates.size })).sort((a, b) => b.visitDays - a.visitDays || a.senior.localeCompare(b.senior));
+  const q1BySeniorByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
+    [...q1BucketTypesBySenior[key]].map(([seniorKey, types]) => ({
+      senior: q1SeniorLabels.get(seniorKey) || seniorKey,
+      types: [...types].sort(),
+      count: types.size,
+    })).sort((a, b) => b.count - a.count || a.senior.localeCompare(b.senior)),
+  ]));
+  const q1Values = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
+    [...q1BucketTypesBySenior[key].values()].reduce((total, types) => total + types.size, 0),
+  ]));
   return {
     month,
     values: {
-      q1: Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, q1Sets[key].size])),
+      q1: q1Values,
       q2,
       q3: Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, q3Sets[key].size])),
     },
     details: {
       q1QualifyingRows,
-      q1UniqueSeniorDates: q1Sets.firstHalf.size + q1Sets.secondHalf.size,
-      q1BySenior,
+      q1BySeniorByBucket,
       q2QualifyingRows: q2Dealer + q2Other,
       q2Dealer,
       q2Other,
