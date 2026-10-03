@@ -207,9 +207,11 @@ export function calculateJointWorkingKpis(prepared, month) {
           manager: row.salesUserName,
           empId: row.empId,
           dates: new Set(),
+          types: new Set(),
           qualifyingRows: 0,
         };
         managerDays.dates.add(row.dateKey);
+        if (row.type) managerDays.types.add(row.typeLabel || row.type);
         managerDays.qualifyingRows += 1;
         q1ManagerDaysByBucket[bucket.key].set(row.managerIdentityKey, managerDays);
       }
@@ -234,18 +236,19 @@ export function calculateJointWorkingKpis(prepared, month) {
     [...q1VisitDaysByBucket[key].values()].sort((a, b) => a.date.localeCompare(b.date) || a.senior.localeCompare(b.senior)),
   ]));
   const q1ManagerSummariesByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
-    [...q1ManagerDaysByBucket[key].values()].map(({ manager, empId, dates, qualifyingRows }) => ({
+    [...q1ManagerDaysByBucket[key].values()].map(({ manager, empId, dates, types, qualifyingRows }) => ({
       manager,
       empId,
-      visitDays: dates.size,
+      typeCount: types.size,
+      types: [...types].sort().join(', '),
       qualifyingRows,
-      dates: [...dates].sort(),
+      dates: [...dates].sort().join(', '),
     })).sort((a, b) => a.manager.localeCompare(b.manager) || a.empId.localeCompare(b.empId)),
   ]));
   const q1Values = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
-    q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.visitDays, 0),
+    q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.typeCount, 0),
   ]));
-  const q1UniqueManagerDateCount = q1Values.firstHalf + q1Values.secondHalf;
+  const q1UniqueManagerDateCount = q1VisitDaysByBucket.firstHalf.size + q1VisitDaysByBucket.secondHalf.size;
   const q3UniqueByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
     [...q3AuditByBucket[key]].map(([distributor, data]) => ({ distributor, ...data })).sort((a, b) => a.distributor.localeCompare(b.distributor)),
   ]));
