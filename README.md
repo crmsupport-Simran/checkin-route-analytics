@@ -1,6 +1,6 @@
 # Check-In Route Analytics — Management Overview & SOP
 
-**Live website:** [Check-In Route Analytics](https://crmsupport-simran.github.io/checkin-route-analytics/)  
+**Live website:** [Check-In Route Analytics](https://crmsupport-simran.github.io/checkin-route-analytics/)
 **Purpose:** Browser-based reporting for sales check-ins, attendance, route review, dealer tour planning, joint-working KPIs, and expected employee travel.
 
 ## What this website can do
