@@ -21,12 +21,18 @@ export default function App() {
   const [supplementalLoading, setSupplementalLoading] = useState({ attendance: false, dealers: false });
   const [supplementalProgress, setSupplementalProgress] = useState({ attendance: null, dealers: null });
   const [progress, setProgress] = useState({ stage: '', progress: 0 });
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const uploadId = useRef(0);
+  const reportFile = useRef(null);
+  const supplementalFiles = useRef({ attendance: null, dealers: null });
 
-  const handleReport = async (file) => {
+  const handleReport = async (file, { keepCurrent = false } = {}) => {
+    reportFile.current = file;
     const current = ++uploadId.current;
-    setError(''); setReport(null); setIntegrity(null); setFilters(emptyFilters); setLoading(true);
+    setError('');
+    if (!keepCurrent) { setReport(null); setIntegrity(null); setFilters(emptyFilters); }
+    setLoading(true);
     setProgress({ stage: 'Reading Excel file…', progress: 0 });
     try {
       const parsed = await parseReport(file, (next) => { if (current === uploadId.current) setProgress(next); });
@@ -42,6 +48,7 @@ export default function App() {
   };
 
   const loadSupplemental = async (file, kind) => {
+    supplementalFiles.current[kind] = file;
     setError('');
     setSupplementalLoading((current) => ({ ...current, [kind]: true }));
     setSupplementalProgress((current) => ({ ...current, [kind]: { stage: 'Reading file…', progress: 0 } }));
@@ -57,6 +64,19 @@ export default function App() {
     }
   };
 
+  const refreshLoadedData = async () => {
+    setRefreshing(true);
+    try {
+      const refreshes = [];
+      if (reportFile.current) refreshes.push(handleReport(reportFile.current, { keepCurrent: true }));
+      if (supplementalFiles.current.attendance) refreshes.push(loadSupplemental(supplementalFiles.current.attendance, 'attendance'));
+      if (supplementalFiles.current.dealers) refreshes.push(loadSupplemental(supplementalFiles.current.dealers, 'dealers'));
+      await Promise.all(refreshes);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return <>
     <header><div className="brand">
       <img className="company-logo" src={`${import.meta.env.BASE_URL}sparsh-pearl-logo.png`} alt="Sparsh Pearl"/>
@@ -66,6 +86,7 @@ export default function App() {
         <button className={view === 'tour' ? 'active' : ''} onClick={() => setView('tour')}>Tour Plan</button>
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
+        <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers)} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
       </nav>
     </div></header>
     <div className="container">

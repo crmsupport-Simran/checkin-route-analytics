@@ -1,13 +1,17 @@
 import * as XLSX from 'xlsx';
 
-export const KPI_BUCKETS = [
-  { key: 'week1', label: 'WEEK-1', from: 1, to: 7 },
-  { key: 'week2', label: 'WEEK-2', from: 8, to: 14 },
-  { key: 'firstHalf', label: '1-15TH', from: 1, to: 15 },
-  { key: 'week3', label: 'WEEK-3', from: 16, to: 22 },
-  { key: 'week4', label: 'WEEK-4', from: 23, to: 30 },
-  { key: 'secondHalf', label: '16-30TH', from: 16, to: 30 },
-];
+export function getKpiBuckets(month) {
+  const [year, monthNumber] = String(month || '').split('-').map(Number);
+  const daysInMonth = year && monthNumber ? new Date(year, monthNumber, 0).getDate() : 31;
+  return [
+    { key: 'week1', label: 'WEEK-1', from: 1, to: 7 },
+    { key: 'week2', label: 'WEEK-2', from: 8, to: 14 },
+    { key: 'firstHalf', label: '1-15TH', from: 1, to: Math.min(15, daysInMonth) },
+    { key: 'week3', label: 'WEEK-3', from: 16, to: 22 },
+    { key: 'week4', label: `WEEK-4 (23-${daysInMonth})`, from: 23, to: daysInMonth },
+    { key: 'secondHalf', label: `16-${daysInMonth}TH`, from: 16, to: daysInMonth },
+  ];
+}
 
 const normalize = (value) => String(value ?? '').trim().replace(/\s+/g, ' ').toLocaleUpperCase();
 const normalizeDesignation = normalize;
@@ -108,15 +112,17 @@ export function prepareJointWorkingRows(records = []) {
   return { rows, rowsByMonth, months: [...months].sort() };
 }
 
-const newCounts = () => Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, 0]));
 export function calculateJointWorkingKpis(prepared, month) {
-  const q1VisitDaysByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Map()]));
-  const q1ManagerDaysByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Map()]));
+  const buckets = getKpiBuckets(month);
+  const [year, monthNumber] = month.split('-').map(Number);
+  const daysInMonth = new Date(year, monthNumber, 0).getDate();
+  const q1VisitDaysByBucket = Object.fromEntries(buckets.map(({ key }) => [key, new Map()]));
+  const q1ManagerDaysByBucket = Object.fromEntries(buckets.map(({ key }) => [key, new Map()]));
   const q1SeniorNameDays = new Set();
   const q1JuniorDesignationExcludedRows = [];
-  const q3Sets = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Set()]));
-  const q3AuditByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, new Map()]));
-  const q2 = newCounts();
+  const q3Sets = Object.fromEntries(buckets.map(({ key }) => [key, new Set()]));
+  const q3AuditByBucket = Object.fromEntries(buckets.map(({ key }) => [key, new Map()]));
+  const q2 = Object.fromEntries(buckets.map(({ key }) => [key, 0]));
   let q1QualifyingRows = 0;
   let q2Dealer = 0;
   let q2Other = 0;
@@ -145,13 +151,13 @@ export function calculateJointWorkingKpis(prepared, month) {
   const increment = (map, key) => map.set(key, (map.get(key) || 0) + 1);
 
   for (const row of monthRows) {
-    if (row.day > 30) continue;
+    if (row.day > daysInMonth) continue;
     if (EXCLUDED_ZONAL_MANAGERS.has(row.zonalManagerKey)) {
       excludedZonalManagerRows += 1;
       increment(excludedZonalManagerBreakdown, row.zonalManager || '(blank)');
       continue;
     }
-    const matchingBuckets = KPI_BUCKETS.filter(({ from, to }) => row.day >= from && row.day <= to);
+    const matchingBuckets = buckets.filter(({ from, to }) => row.day >= from && row.day <= to);
     increment(rawBreakdowns.types, row.typeLabel || '(blank)');
     if (row.jointWorking === 'YES') {
       yesRows += 1;
@@ -232,10 +238,10 @@ export function calculateJointWorkingKpis(prepared, month) {
     }
   }
 
-  const q1BySeniorByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
+  const q1BySeniorByBucket = Object.fromEntries(buckets.map(({ key }) => [key,
     [...q1VisitDaysByBucket[key].values()].sort((a, b) => a.date.localeCompare(b.date) || a.senior.localeCompare(b.senior)),
   ]));
-  const q1ManagerSummariesByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
+  const q1ManagerSummariesByBucket = Object.fromEntries(buckets.map(({ key }) => [key,
     [...q1ManagerDaysByBucket[key].values()].map(({ manager, empId, dates, types, qualifyingRows }) => ({
       manager,
       empId,
@@ -245,11 +251,11 @@ export function calculateJointWorkingKpis(prepared, month) {
       dates: [...dates].sort().join(', '),
     })).sort((a, b) => a.manager.localeCompare(b.manager) || a.empId.localeCompare(b.empId)),
   ]));
-  const q1Values = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
+  const q1Values = Object.fromEntries(buckets.map(({ key }) => [key,
     q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.typeCount, 0),
   ]));
   const q1UniqueManagerDateCount = q1VisitDaysByBucket.firstHalf.size + q1VisitDaysByBucket.secondHalf.size;
-  const q3UniqueByBucket = Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key,
+  const q3UniqueByBucket = Object.fromEntries(buckets.map(({ key }) => [key,
     [...q3AuditByBucket[key]].map(([distributor, data]) => ({ distributor, ...data })).sort((a, b) => a.distributor.localeCompare(b.distributor)),
   ]));
   return {
@@ -257,10 +263,10 @@ export function calculateJointWorkingKpis(prepared, month) {
     values: {
       q1: q1Values,
       q2,
-      q3: Object.fromEntries(KPI_BUCKETS.map(({ key }) => [key, q3Sets[key].size])),
+      q3: Object.fromEntries(buckets.map(({ key }) => [key, q3Sets[key].size])),
     },
     details: {
-      totalMonthRows: monthRows.filter((row) => row.day <= 30).length,
+      totalMonthRows: monthRows.filter((row) => row.day <= daysInMonth).length,
       excludedZonalManagerRows,
       excludedZonalManagerBreakdown: [...excludedZonalManagerBreakdown].map(([manager, count]) => ({ manager, count })).sort((a, b) => a.manager.localeCompare(b.manager)),
       yesRows,
