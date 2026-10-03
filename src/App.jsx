@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import IntegrityAnalysis from './components/IntegrityAnalysis';
 import TourPlan from './components/TourPlan';
 import JointWorkingKpi from './components/JointWorkingKpi';
+import EmployeeTourPlanReport from './components/EmployeeTourPlanReport';
 import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
 
@@ -86,6 +87,7 @@ export default function App() {
         <button className={view === 'tour' ? 'active' : ''} onClick={() => setView('tour')}>Tour Plan</button>
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
+        <button className={view === 'employee-tour' ? 'active' : ''} onClick={() => setView('employee-tour')}>Employee Tour Plan</button>
         <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers)} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
       </nav>
     </div></header>
@@ -95,6 +97,7 @@ export default function App() {
       {error && <div className="notice error">{error}</div>}
       {view === 'tour' && <TourPlan dealers={dealers} report={report} attendance={attendance}/>}
       {view === 'joint-working' && <JointWorkingKpi report={report}/>}
+      {view === 'employee-tour' && <EmployeeTourPlanReport report={report} attendance={attendance} dealers={dealers}/>}
       {report && view === 'dashboard' && <>
         <FilterPanel indexes={report.indexes} filters={filters} setFilters={setFilters} clear={() => setFilters(emptyFilters)}/>
         {report.missingGpsCount > 0 && <div className="notice">{report.missingGpsCount.toLocaleString()} records have invalid or incomplete GPS. They remain available in the table but are excluded from route points.</div>}
