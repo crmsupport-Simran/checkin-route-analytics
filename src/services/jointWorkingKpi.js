@@ -30,6 +30,12 @@ const SENIOR_DESIGNATIONS = new Set([
   'ASSISTANT MANAGER-SALES', 'ASSISTANT MANAGER-SALES (4)', 'MANAGER-SALES (4)',
   'ASSISTANT MANAGER-SALES (NBD) (4)', 'AGM-SALES', 'SR.MANAGER-SALES (9)', 'DGM-SALES',
 ]);
+const EXCLUDED_ZONAL_MANAGERS = new Set([
+  'SHOBHIT GOEL',
+  'OTHERS',
+  'ARCHIT GARG',
+  'SHANTANU ATTARY',
+]);
 
 function hasApprovedDesignation(value, approvedDesignations) {
   const designations = normalizeDesignation(value).split(',').map((designation) => designation.trim()).filter(Boolean);
@@ -81,6 +87,8 @@ export function prepareJointWorkingRows(records = []) {
       jointWorkingDesignationLabel: String(record.jointWorkingDesignation ?? '').trim().replace(/\s+/g, ' '),
       designationSalesType: normalize(record.designationSalesType),
       designationSalesTypeLabel: String(record.designationSalesType ?? '').trim().replace(/\s+/g, ' '),
+      zonalManager: String(record.zonalManager ?? '').trim().replace(/\s+/g, ' '),
+      zonalManagerKey: normalize(record.zonalManager),
       jointWorking: normalize(record.jointWorking),
       jointWorkingLabel: String(record.jointWorking ?? '').trim().replace(/\s+/g, ' '),
       seniorName: normalize(record.jointWorkingName),
@@ -113,6 +121,8 @@ export function calculateJointWorkingKpis(prepared, month) {
   let q2Dealer = 0;
   let q2Other = 0;
   let q3QualifyingRows = 0;
+  let excludedZonalManagerRows = 0;
+  const excludedZonalManagerBreakdown = new Map();
   const monthRows = prepared.rowsByMonth?.get(month) || [];
   const rawBreakdowns = {
     designations: new Map(),
@@ -136,6 +146,11 @@ export function calculateJointWorkingKpis(prepared, month) {
 
   for (const row of monthRows) {
     if (row.day > 30) continue;
+    if (EXCLUDED_ZONAL_MANAGERS.has(row.zonalManagerKey)) {
+      excludedZonalManagerRows += 1;
+      increment(excludedZonalManagerBreakdown, row.zonalManager || '(blank)');
+      continue;
+    }
     const matchingBuckets = KPI_BUCKETS.filter(({ from, to }) => row.day >= from && row.day <= to);
     increment(rawBreakdowns.types, row.typeLabel || '(blank)');
     if (row.jointWorking === 'YES') {
@@ -243,6 +258,8 @@ export function calculateJointWorkingKpis(prepared, month) {
     },
     details: {
       totalMonthRows: monthRows.filter((row) => row.day <= 30).length,
+      excludedZonalManagerRows,
+      excludedZonalManagerBreakdown: [...excludedZonalManagerBreakdown].map(([manager, count]) => ({ manager, count })).sort((a, b) => a.manager.localeCompare(b.manager)),
       yesRows,
       yesNamedRows,
       q2SeniorRows,
