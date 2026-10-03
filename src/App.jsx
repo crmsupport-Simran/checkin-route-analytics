@@ -4,6 +4,7 @@ import FilterPanel from './components/FilterPanel';
 import Dashboard from './components/Dashboard';
 import IntegrityAnalysis from './components/IntegrityAnalysis';
 import TourPlan from './components/TourPlan';
+import JointWorkingKpi from './components/JointWorkingKpi';
 import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
 
@@ -64,6 +65,7 @@ export default function App() {
         <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
         <button className={view === 'tour' ? 'active' : ''} onClick={() => setView('tour')}>Tour Plan</button>
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
+        <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
       </nav>
     </div></header>
     <div className="container">
@@ -71,6 +73,7 @@ export default function App() {
         loading={loading} supplementalLoading={supplementalLoading} supplementalProgress={supplementalProgress} progress={progress} report={report} attendance={attendance} dealers={dealers}/>
       {error && <div className="notice error">{error}</div>}
       {view === 'tour' && <TourPlan dealers={dealers} report={report} attendance={attendance}/>}
+      {view === 'joint-working' && <JointWorkingKpi report={report}/>}
       {report && view === 'dashboard' && <>
         <FilterPanel indexes={report.indexes} filters={filters} setFilters={setFilters} clear={() => setFilters(emptyFilters)}/>
         {report.missingGpsCount > 0 && <div className="notice">{report.missingGpsCount.toLocaleString()} records have invalid or incomplete GPS. They remain available in the table but are excluded from route points.</div>}
