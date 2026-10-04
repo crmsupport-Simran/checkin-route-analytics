@@ -80,7 +80,7 @@ export default function App() {
 
   return <>
     <header><div className="brand">
-      <img className="company-logo" src={`${import.meta.env.BASE_URL}sparsh-pearl-logo.png`} alt="Sparsh Pearl"/>
+      <img className="company-logo" src={`${import.meta.env.BASE_URL}check-in-route-analytics-logo.png`} alt="Check-In Route Analytics"/>
       <div className="brand-divider"/><div><h1>Check-In Route Analytics</h1><p>Private sales visit intelligence · no API key required</p></div>
       <nav className="main-nav">
         <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
