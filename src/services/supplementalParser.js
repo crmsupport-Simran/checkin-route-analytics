@@ -1,9 +1,10 @@
 import * as XLSX from 'xlsx';
+import { coordinate } from '../utils/coordinateUtils';
 
 const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (value) => Number(String(value ?? '').replace(/[^0-9.-]/g, '')) || 0;
 const text = (value) => String(value ?? '').trim();
-const validPoint = (lat, lng) => { const a = Number(lat), b = Number(lng); return Number.isFinite(a) && Number.isFinite(b) && a >= -90 && a <= 90 && b >= -180 && b <= 180 && !(a === 0 && b === 0) ? [a, b] : null; };
+const validPoint = (lat, lng) => coordinate(lat, lng);
 const employeeAssignments = (value) => [...String(value || '').matchAll(/([^,;]+?)\s*\(\s*(?:app\s*)?(\d+)\s*\)/gi)].map((match) => ({ id: match[2], name: text(match[1]) }));
 const employeeIds = (value) => [...new Set([...employeeAssignments(value).map((item) => item.id), ...[...String(value || '').matchAll(/\((?:app\s*)?(\d+)\)|\b(\d{2,})\b/gi)].map((match) => match[1] || match[2])])];
 function headerGetter(row, columns) { return (...names) => { for (const name of names) { const key = columns[normalize(name)]; if (key) return row[key] ?? ''; } return ''; }; }
@@ -23,7 +24,7 @@ function rowsFromBuffer(fileBuffer, expectedSheet) {
 export function parseAttendanceBuffer(fileBuffer) {
   const { sheetName, rows, columns } = rowsFromBuffer(fileBuffer, 'Attendance Report');
   let starts = 0; let stops = 0; let missingStops = 0; const employeeIds = new Set();
-  const records = rows.map((row, index) => { const get = headerGetter(row, columns); const start = dateValue(get('Start Time')); const stop = dateValue(get('Stop Time')); const record = { id: `attendance-${index}`, employee: text(get('Name')), empId: text(get('Employee Code')), designation: text(get('Designation')), googleKm: number(get('Google KM')), start, stop, dateKey: dateKey(start || stop), startAddress: text(get('Start Address')), stopAddress: text(get('Stop Address')), startPoint: validPoint(get('Start Latitude', 'Start Lat', 'Latitude'), get('Start Longitude', 'Start Long', 'Longitude')), stopPoint: validPoint(get('Stop Latitude', 'End Latitude', 'Stop Lat'), get('Stop Longitude', 'End Longitude', 'Stop Long')), reportingManager: text(get('Reporting Manager')), zonalManager: text(get('Zonal Manager')), workingTime: text(get('Total Working Time')) }; if (record.start) starts++; if (record.stop) stops++; else missingStops++; if (record.empId) employeeIds.add(record.empId); return record; }).filter((record) => record.empId || record.employee);
+  const records = rows.map((row, index) => { const get = headerGetter(row, columns); const start = dateValue(get('Start Time')); const stop = dateValue(get('Stop Time')); const startLatitude = get('Start Latitude', 'Start Lat', 'Latitude'); const startLongitude = get('Start Longitude', 'Start Long', 'Longitude'); const stopLatitude = get('Stop Latitude', 'End Latitude', 'Stop Lat'); const stopLongitude = get('Stop Longitude', 'End Longitude', 'Stop Long'); const record = { id: `attendance-${index}`, employee: text(get('Name')), empId: text(get('Employee Code')), designation: text(get('Designation')), googleKm: number(get('Google KM')), start, stop, dateKey: dateKey(start || stop), startAddress: text(get('Start Address')), stopAddress: text(get('Stop Address')), startLatitude, startLongitude, stopLatitude, stopLongitude, startPoint: validPoint(startLatitude, startLongitude), stopPoint: validPoint(stopLatitude, stopLongitude), reportingManager: text(get('Reporting Manager')), zonalManager: text(get('Zonal Manager')), workingTime: text(get('Total Working Time') ) }; if (record.start) starts++; if (record.stop) stops++; else missingStops++; if (record.empId) employeeIds.add(record.empId); return record; }).filter((record) => record.empId || record.employee);
   const byEmployeeDate = {}; records.forEach((record) => { const key = `${record.empId}|${record.dateKey}`; (byEmployeeDate[key] ||= []).push(record); });
   return { sheetName, records, byEmployeeDate, stats: { employees: employeeIds.size, starts, stops, missingStops } };
 }
