@@ -18,6 +18,38 @@ export default function MapView({ visits, route, activeIndex, routeColor = '#256
     }
   }, []);
 
+  // Leaflet measures its container only at initialization. Route view toggles,
+  // responsive breakpoints, and panel resizing can change the map dimensions
+  // without a browser-window resize, leaving blank tile areas until the next zoom.
+  useEffect(() => {
+    const container = mapRef.current;
+    if (!container || !map.current) return undefined;
+
+    let frame;
+    let timeout;
+    const refreshMapSize = () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+      frame = requestAnimationFrame(() => {
+        map.current?.invalidateSize({ pan: false, debounceMoveend: true });
+        // Allow grid/flex layout to settle before Leaflet requests newly visible tiles.
+        timeout = setTimeout(() => map.current?.invalidateSize({ pan: false, debounceMoveend: true }), 120);
+      });
+    };
+
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refreshMapSize) : null;
+    observer?.observe(container);
+    window.addEventListener('resize', refreshMapSize);
+    refreshMapSize();
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', refreshMapSize);
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+    };
+  }, []);
+
   useEffect(() => {
     if (!map.current) return;
     layer.current?.clearLayers();
