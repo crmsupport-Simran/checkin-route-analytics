@@ -259,10 +259,9 @@ export function calculateJointWorkingKpis(prepared, month) {
   // distributors are counted once in each week.
   q1Values.firstHalf = q1Values.week1 + q1Values.week2;
   q1Values.secondHalf = q1Values.week3 + q1Values.week4;
-  // Q2 is a row count, so the existing bucket pass already makes both half
-  // totals equal the sum of their two weekly row counts.
+  // Q2 is a row count, so the existing row-by-row bucket pass already makes
+  // both half totals equal the sum of their two weekly row counts.
   q2.firstHalf = q2.week1 + q2.week2;
-  q2.secondHalf = q2.week3 + q2.week4;
   const combineManagerWeeks = (weekKeys) => {
     const grouped = new Map();
     for (const weekKey of weekKeys) {
