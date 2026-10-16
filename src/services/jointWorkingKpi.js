@@ -8,8 +8,8 @@ export function getKpiBuckets(month) {
     // Include the 15th in WEEK-2 so WEEK-1 + WEEK-2 fully covers 1-15TH.
     { key: 'week2', label: 'WEEK-2 (8-15)', from: 8, to: Math.min(15, daysInMonth) },
     { key: 'firstHalf', label: '1-15TH', from: 1, to: Math.min(15, daysInMonth) },
-    { key: 'week3', label: 'WEEK-3', from: 16, to: 22 },
-    { key: 'week4', label: `WEEK-4 (23-${daysInMonth})`, from: 23, to: daysInMonth },
+    { key: 'week3', label: 'WEEK-3 (16-23)', from: 16, to: Math.min(23, daysInMonth) },
+    { key: 'week4', label: `WEEK-4 (24-${daysInMonth})`, from: 24, to: daysInMonth },
     { key: 'secondHalf', label: `16-${daysInMonth}TH`, from: 16, to: daysInMonth },
   ];
 }
