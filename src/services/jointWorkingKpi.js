@@ -5,7 +5,8 @@ export function getKpiBuckets(month) {
   const daysInMonth = year && monthNumber ? new Date(year, monthNumber, 0).getDate() : 31;
   return [
     { key: 'week1', label: 'WEEK-1', from: 1, to: 7 },
-    { key: 'week2', label: 'WEEK-2', from: 8, to: 14 },
+    // Include the 15th in WEEK-2 so WEEK-1 + WEEK-2 fully covers 1-15TH.
+    { key: 'week2', label: 'WEEK-2 (8-15)', from: 8, to: Math.min(15, daysInMonth) },
     { key: 'firstHalf', label: '1-15TH', from: 1, to: Math.min(15, daysInMonth) },
     { key: 'week3', label: 'WEEK-3', from: 16, to: 22 },
     { key: 'week4', label: `WEEK-4 (23-${daysInMonth})`, from: 23, to: daysInMonth },
@@ -123,6 +124,7 @@ export function calculateJointWorkingKpis(prepared, month) {
   const q3Sets = Object.fromEntries(buckets.map(({ key }) => [key, new Set()]));
   const q3AuditByBucket = Object.fromEntries(buckets.map(({ key }) => [key, new Map()]));
   const q2 = Object.fromEntries(buckets.map(({ key }) => [key, 0]));
+  const q2SourceRowsByBucket = Object.fromEntries(buckets.map(({ key }) => [key, []]));
   let q1QualifyingRows = 0;
   let q2Dealer = 0;
   let q2Other = 0;
@@ -222,7 +224,22 @@ export function calculateJointWorkingKpis(prepared, month) {
         q1ManagerDaysByBucket[bucket.key].set(row.managerIdentityKey, managerDays);
       }
       if (q2Type) {
-        for (const bucket of matchingBuckets) q2[bucket.key] += 1;
+        for (const bucket of matchingBuckets) {
+          q2[bucket.key] += 1;
+          q2SourceRowsByBucket[bucket.key].push({
+            date: row.dateKey,
+            employee: row.salesUserName,
+            empId: row.empId,
+            managerDesignation: row.designationLabel,
+            juniorDesignation: row.jointWorkingDesignationLabel,
+            jointWorkingName: row.seniorLabel,
+            type: row.typeLabel,
+            company: row.companyName,
+            distributorCode: row.dealerChannelPartnerCode,
+            distributor: row.dealerChannelPartner,
+            zonalManager: row.zonalManager,
+          });
+        }
         if (row.type === 'DEALER') q2Dealer += 1;
         else q2Other += 1;
       }
@@ -231,7 +248,7 @@ export function calculateJointWorkingKpis(prepared, month) {
       q3QualifyingRows += 1;
       if (row.distributor) for (const bucket of matchingBuckets) {
         q3Sets[bucket.key].add(row.distributor);
-        const partner = q3AuditByBucket[bucket.key].get(row.distributor) || { senior: row.salesUserName || '(blank)', designation: row.designationLabel, identifier: row.distributorLabel, type: row.typeLabel, rawRows: 0 };
+        const partner = q3AuditByBucket[bucket.key].get(row.distributor) || { senior: row.salesUserName || '(blank)', empId: row.empId, designation: row.designationLabel, identifier: row.distributorLabel, type: row.typeLabel, rawRows: 0 };
         partner.rawRows += 1;
         q3AuditByBucket[bucket.key].set(row.distributor, partner);
       }
@@ -246,14 +263,14 @@ export function calculateJointWorkingKpis(prepared, month) {
       managerKey,
       manager,
       empId,
-      typeCount: types.size,
+      visitDays: dates.size,
       types: [...types].sort().join(', '),
       qualifyingRows,
       dates: [...dates].sort().join(', '),
     })).sort((a, b) => a.manager.localeCompare(b.manager) || a.empId.localeCompare(b.empId)),
   ]));
   const q1Values = Object.fromEntries(buckets.map(({ key }) => [key,
-    q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.typeCount, 0),
+    q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.visitDays, 0),
   ]));
   // Half-month KPIs add their weekly subtotals, so repeat types/managers and
   // distributors are counted once in each week.
@@ -262,6 +279,8 @@ export function calculateJointWorkingKpis(prepared, month) {
   // Q2 is a row count, so the existing row-by-row bucket pass already makes
   // both half totals equal the sum of their two weekly row counts.
   q2.firstHalf = q2.week1 + q2.week2;
+  q2SourceRowsByBucket.firstHalf = [...q2SourceRowsByBucket.week1, ...q2SourceRowsByBucket.week2];
+  q2SourceRowsByBucket.secondHalf = [...q2SourceRowsByBucket.week3, ...q2SourceRowsByBucket.week4];
   const combineManagerWeeks = (weekKeys) => {
     const grouped = new Map();
     for (const weekKey of weekKeys) {
@@ -270,7 +289,7 @@ export function calculateJointWorkingKpis(prepared, month) {
           managerKey: manager.managerKey, manager: manager.manager, empId: manager.empId,
           qualifyingRows: 0, dates: new Set(), weeks: {},
         };
-        summary.weeks[weekKey] = { typeCount: manager.typeCount, types: manager.types };
+        summary.weeks[weekKey] = { visitDays: manager.visitDays, types: manager.types };
         summary.qualifyingRows += manager.qualifyingRows;
         manager.dates.split(', ').filter(Boolean).forEach((date) => summary.dates.add(date));
         grouped.set(manager.managerKey, summary);
@@ -278,14 +297,17 @@ export function calculateJointWorkingKpis(prepared, month) {
     }
     return [...grouped.values()].map((manager) => ({
       ...manager,
-      typeCount: weekKeys.reduce((sum, key) => sum + (manager.weeks[key]?.typeCount || 0), 0),
+      visitDays: weekKeys.reduce((sum, key) => sum + (manager.weeks[key]?.visitDays || 0), 0),
       types: weekKeys.map((key) => `${buckets.find((bucket) => bucket.key === key)?.label || key}: ${manager.weeks[key]?.types || '—'}`).join('; '),
       dates: [...manager.dates].sort().join(', '),
     })).sort((a, b) => a.manager.localeCompare(b.manager) || a.empId.localeCompare(b.empId));
   };
   q1ManagerSummariesByBucket.firstHalf = combineManagerWeeks(['week1', 'week2']);
   q1ManagerSummariesByBucket.secondHalf = combineManagerWeeks(['week3', 'week4']);
-  const q1UniqueManagerDateCount = q1VisitDaysByBucket.firstHalf.size + q1VisitDaysByBucket.secondHalf.size;
+  q1BySeniorByBucket.firstHalf = [...q1BySeniorByBucket.week1, ...q1BySeniorByBucket.week2];
+  q1BySeniorByBucket.secondHalf = [...q1BySeniorByBucket.week3, ...q1BySeniorByBucket.week4];
+  const q1UniqueManagerDateCount = q1ManagerSummariesByBucket.firstHalf.reduce((sum, manager) => sum + manager.visitDays, 0)
+    + q1ManagerSummariesByBucket.secondHalf.reduce((sum, manager) => sum + manager.visitDays, 0);
   const q3UniqueByBucket = Object.fromEntries(buckets.map(({ key }) => [key,
     [...q3AuditByBucket[key]].map(([distributor, data]) => ({ distributor, ...data })).sort((a, b) => a.distributor.localeCompare(b.distributor)),
   ]));
@@ -329,6 +351,7 @@ export function calculateJointWorkingKpis(prepared, month) {
       q2QualifyingRows: q2Dealer + q2Other,
       q2Dealer,
       q2Other,
+      q2SourceRowsByBucket,
       q3QualifyingRows,
       q3UniqueDistributors: q3Values.firstHalf + q3Values.secondHalf,
       q3UniqueByBucket,
@@ -345,4 +368,31 @@ export function getJointWorkingKpiExportRows(result, monthLabel) {
     [monthLabel, 'Q.2 NO. OF RETAILER VISITED, BDO WITH SENIOR SALES PERSON', ...buckets.map(({ key }) => result.values.q2[key])],
     [monthLabel, 'Q.3 NO. OF DISTRIBUTOR VISITED, PHYSICALLY BY SENIOR PERSON (UNIQUE NUMBER)', ...buckets.map(({ key }) => result.values.q3[key])],
   ];
+}
+
+export function getJointWorkingKpiDetailExportRows(result, question, monthLabel) {
+  if (!result) return [];
+  const buckets = getKpiBuckets(result.month);
+  if (question === 'q1') {
+    const rows = [['Month', 'Bucket', 'Manager', 'Emp ID', 'Unique Visit Days', 'Dates', 'Qualifying Rows', 'Types']];
+    for (const bucket of buckets) {
+      for (const manager of result.details.q1ManagerSummariesByBucket[bucket.key]) {
+        rows.push([monthLabel, bucket.label, manager.manager, manager.empId, manager.visitDays, manager.dates, manager.qualifyingRows, manager.types]);
+      }
+    }
+    return rows;
+  }
+  if (question === 'q2') {
+    return [
+      ['Month', 'Bucket', 'Date', 'Sales User / Manager', 'Emp ID', 'Manager Designation', 'Joint Working Designation', 'Joint Working Name', 'Type', 'Company', 'Dealer Channel Partner Code', 'Dealer Channel Partner', 'Zonal Manager'],
+      ...buckets.flatMap((bucket) => result.details.q2SourceRowsByBucket[bucket.key].map((row) => [monthLabel, bucket.label, row.date, row.employee, row.empId, row.managerDesignation, row.juniorDesignation, row.jointWorkingName, row.type, row.company, row.distributorCode, row.distributor, row.zonalManager])),
+    ];
+  }
+  if (question === 'q3') {
+    return [
+      ['Month', 'Bucket', 'Senior Sales User', 'Emp ID', 'Designation', 'Unique Distributor Identifier', 'Type', 'Source Rows'],
+      ...buckets.flatMap((bucket) => result.details.q3UniqueByBucket[bucket.key].map((row) => [monthLabel, bucket.label, row.senior, row.empId, row.designation, row.identifier, row.type, row.rawRows])),
+    ];
+  }
+  return [];
 }
