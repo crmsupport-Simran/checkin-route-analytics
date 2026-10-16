@@ -38,8 +38,9 @@ export default function DayRouteRules({ empId, date, visits, localMarketKm, atte
   const update = (key, value) => setRule((current) => ({ ...current, [key]: value }));
   const save = () => localStorage.setItem(storageKey, JSON.stringify(rule));
   const firstVisit = visits[0], lastVisit = visits.at(-1);
-  const attendanceStartSource = attendanceDay?.startPoint ? 'Matching Attendance record · Start Latitude / Start Longitude' : attendanceEndpoints?.startSource === 'Inferred Attendance Anchor' ? 'Inferred from this Employee ID historical Attendance GPS' : attendanceDay ? 'Matching Attendance record has no valid Start GPS; no historical anchor available' : attendance ? 'No matching Attendance record and no historical anchor available' : 'Attendance report not uploaded';
-  const attendanceStopSource = attendanceDay?.stopPoint ? 'Matching Attendance record · Stop Latitude / Stop Longitude' : attendanceEndpoints?.endSource === 'Inferred Attendance Anchor' ? 'Inferred from this Employee ID historical Attendance GPS' : attendanceDay ? 'Matching Attendance record has no valid Stop GPS; no historical anchor available' : attendance ? 'No matching Attendance record and no historical anchor available' : 'Attendance report not uploaded';
+  const anchor = attendanceEndpoints?.historicalAnchor;
+  const attendanceStartSource = attendanceDay?.startPoint ? 'Matching Attendance record · Start Latitude / Start Longitude' : attendanceDay ? 'Matching Attendance record has no valid Start GPS' : attendance ? 'No matching Attendance record for this employee/date' : 'Attendance report not uploaded';
+  const attendanceStopSource = attendanceDay?.stopPoint ? 'Matching Attendance record · Stop Latitude / Stop Longitude' : attendanceDay ? 'No confirmed same-day Stop GPS; route ends at the last valid Check-In' : attendance ? 'No matching Attendance record for this employee/date' : 'Attendance report not uploaded';
 
   return <section className="card day-rule">
     <div className="section-head"><div><span className="eyebrow">STAY / TRAVEL DAY RULE</span><h2>Field Route Summary</h2></div><button className="secondary" onClick={save}>Save day rule</button></div>
@@ -60,11 +61,12 @@ export default function DayRouteRules({ empId, date, visits, localMarketKm, atte
         <div><dt>Employee ID / Date</dt><dd>{empId} · {date}</dd></div>
         <div><dt>Attendance Start</dt><dd>{attendanceDay?.startAddress || 'Address unavailable'}<small>Lat {rawCoordText(attendanceDay?.startLatitude)} · Lon {rawCoordText(attendanceDay?.startLongitude)} · {attendanceStartSource}</small></dd></div>
         <div><dt>Attendance Stop</dt><dd>{attendanceDay?.stopAddress || 'Address unavailable'}<small>Lat {rawCoordText(attendanceDay?.stopLatitude)} · Lon {rawCoordText(attendanceDay?.stopLongitude)} · {attendanceStopSource}</small></dd></div>
+        {anchor?.point && <div><dt>Historical anchor · reference only</dt><dd>{anchor.sourceDate || 'Source date unavailable'} · {anchor.sourceRecordId || 'Attendance row unavailable'}<small>{anchor.sourceField || 'GPS field'} · {coordText(anchor.sourcePoint || anchor.point)} · {anchor.repeatedObservations} supporting same-employee GPS observations · excluded from route endpoints and distance</small></dd></div>}
         <div><dt>First Check-In</dt><dd>{firstVisit?.companyName || 'Unavailable'}<small>{coordText(firstVisit?.start || firstVisit?.end)} · {firstVisit?.coordinateSource || 'No valid GPS point'}</small></dd></div>
         <div><dt>Last Check-In</dt><dd>{lastVisit?.companyName || 'Unavailable'}<small>{coordText(lastVisit?.start || lastVisit?.end)} · {lastVisit?.coordinateSource || 'No valid GPS point'}</small></dd></div>
         <div><dt>Configured Start</dt><dd>Lat {rawCoordText(rule.startLat)} · Lon {rawCoordText(rule.startLng)}<small>{startCheck.status} · source: browser localStorage key {storageKey}</small></dd></div>
         <div><dt>Configured End</dt><dd>Lat {rawCoordText(rule.endLat)} · Lon {rawCoordText(rule.endLng)}<small>{endCheck.status} · source: browser localStorage key {storageKey}</small></dd></div>
-        <div><dt>Endpoint selection</dt><dd>{attendanceStartSource}; {attendanceStopSource}<small>Valid matching Attendance GPS takes priority; otherwise only a valid historical GPS anchor for this employee is used. Invalid/unavailable configured values are never selected or plotted.</small></dd></div>
+        <div><dt>Endpoint selection</dt><dd>{attendanceStartSource}; {attendanceStopSource}<small>Only valid same-day Attendance GPS can start or end the calculated route. Historical anchors and configured coordinates are reference data only and are not routed.</small></dd></div>
       </dl>
     </details>
   </section>;

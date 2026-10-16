@@ -4,6 +4,8 @@ import { csvValue, duration, money, num } from '../utils/formatUtils';
 import { routePoints } from '../services/routingService';
 import { analyzeRoute } from '../services/routeAnalysisService';
 import { inferAttendanceBase } from '../services/baseInference';
+import { getConfirmedAttendanceEndpoints } from '../services/routeEndpointService';
+import { selectRouteImprovement } from '../services/routeImprovementService';
 import { haversine, isValidCoordinate } from '../utils/coordinateUtils';
 import EmployeeSummary from './EmployeeSummary';
 import MapView from './MapView';
@@ -36,15 +38,17 @@ function CheckpointOrderTable({ title, hint, stops, route, tone = 'actual' }) {
     <h3>{title}</h3>
     <p>{hint}</p>
     <div className="table-scroll">
-      <table className="order-table"><thead><tr><th>#</th><th>Type</th><th>From</th><th>To</th><th>Time</th><th>Distance KM</th><th>Distance source</th><th>Coordinate source</th></tr></thead>
+      <table className="order-table"><thead><tr><th>#</th><th>Type</th><th>Source Row</th><th>From</th><th>To</th><th>Coordinates</th><th>Time</th><th>Distance KM</th><th>Distance source</th><th>Coordinate source</th></tr></thead>
         <tbody>{stops.map((row, index) => <tr key={row.key}>
           <td>{index + 1}</td>
           <td><span className={`event-dot ${row.kind === 'checkin' ? 'in' : row.kind === 'attendance-start' ? 'attendance-start-dot' : 'attendance-stop-dot'}`}/>{row.type}</td>
+          <td>{row.sourceRowId || '—'}</td>
           <td>{index === 0 ? 'Route start' : stops[index - 1].label}</td>
           <td><b>{row.label}</b><small>{row.location || 'GPS location'}</small></td>
+          <td>{row.point ? `${row.point[0].toFixed(6)}, ${row.point[1].toFixed(6)}` : '—'}</td>
           <td>{displayTime(row.time) || '—'}</td>
-          <td>{index === 0 ? '—' : `${num(route?.segmentKm?.[index - 1] || 0, 2)} km`}</td>
-          <td>{index === 0 ? '—' : route?.source === 'road' ? 'Road routing' : route?.source === 'straight' ? 'ESTIMATED (straight-line)' : 'Unavailable'}</td>
+          <td>{index === 0 || row.missing ? '—' : `${num(route?.segmentKm?.[index - 1] || 0, 2)} km`}</td>
+          <td>{index === 0 || row.missing ? 'Unavailable' : route?.source === 'road' ? 'Road routing' : route?.source === 'straight' ? 'ESTIMATED (straight-line)' : 'Unavailable'}</td>
           <td>{row.source}</td>
         </tr>)}</tbody>
       </table>
@@ -127,41 +131,58 @@ export default function Dashboard({ report, filters, setFilters, attendance, dea
   }, [attendance, filters.empId, filters.date]);
   const attendanceDay = useMemo(() => {
     if (!attendanceRows.length) return null;
-    const startRow = attendanceRows.find((row) => row.startPoint) || attendanceRows[0];
-    const stopRow = [...attendanceRows].reverse().find((row) => row.stopPoint) || attendanceRows.at(-1);
-    return { ...startRow, startPoint: attendanceRows.find((row) => row.startPoint)?.startPoint || null, startLatitude: startRow.startLatitude, startLongitude: startRow.startLongitude, startAddress: attendanceRows.find((row) => row.startAddress)?.startAddress || startRow.startAddress, stopPoint: [...attendanceRows].reverse().find((row) => row.stopPoint)?.stopPoint || null, stopLatitude: stopRow.stopLatitude, stopLongitude: stopRow.stopLongitude, stopAddress: [...attendanceRows].reverse().find((row) => row.stopAddress)?.stopAddress || stopRow.stopAddress };
+    const startGpsRow = attendanceRows.find((row) => row.startPoint);
+    const stopGpsRow = [...attendanceRows].reverse().find((row) => row.stopPoint);
+    const startRow = startGpsRow || attendanceRows[0];
+    const stopRow = stopGpsRow || [...attendanceRows].reverse().find((row) => row.stop || row.stopLatitude || row.stopLongitude) || attendanceRows.at(-1);
+    return {
+      ...startRow,
+      startPoint: startGpsRow?.startPoint || null,
+      startRecordId: startGpsRow?.id || startRow.id,
+      startLatitude: startRow.startLatitude,
+      startLongitude: startRow.startLongitude,
+      startAddress: attendanceRows.find((row) => row.startAddress)?.startAddress || startRow.startAddress,
+      stopPoint: stopGpsRow?.stopPoint || null,
+      stopRecordId: stopGpsRow?.id || stopRow.id,
+      stopLatitude: stopRow.stopLatitude,
+      stopLongitude: stopRow.stopLongitude,
+      stopAddress: [...attendanceRows].reverse().find((row) => row.stopAddress)?.stopAddress || stopRow.stopAddress,
+    };
   }, [attendanceRows]);
   const inferredAttendanceBase = useMemo(() => inferAttendanceBase(attendance, filters.empId), [attendance, filters.empId]);
-  const attendanceEndpoints = useMemo(() => ({
-    startPoint: attendanceDay?.startPoint || inferredAttendanceBase?.point || null,
-    endPoint: attendanceDay?.stopPoint || inferredAttendanceBase?.point || null,
-    startSource: attendanceDay?.startPoint ? 'Attendance Start GPS' : inferredAttendanceBase?.point ? 'Inferred Attendance Anchor' : 'Unavailable',
-    endSource: attendanceDay?.stopPoint ? 'Attendance Stop GPS' : inferredAttendanceBase?.point ? 'Inferred Attendance Anchor' : 'Unavailable',
-  }), [attendanceDay, inferredAttendanceBase]);
+  const attendanceEndpoints = useMemo(
+    () => getConfirmedAttendanceEndpoints(attendanceDay, inferredAttendanceBase),
+    [attendanceDay, inferredAttendanceBase],
+  );
   const routeStops = useMemo(() => routeVisits.map((visit) => ({ ...visit, start: visitPoint(visit), end: null, coordinateSource: visit.start && isValidCoordinate(...visit.start) ? 'Check-In GPS' : 'Check-Out GPS fallback' })), [routeVisits]);
   const routePointSequence = useMemo(() => [...(attendanceEndpoints.startPoint ? [attendanceEndpoints.startPoint] : []), ...routeStops.map((visit) => visit.start).filter(Boolean), ...(attendanceEndpoints.endPoint ? [attendanceEndpoints.endPoint] : [])], [attendanceEndpoints, routeStops]);
   const eligible = Boolean(filters.empId && filters.date && routePointSequence.length >= 2);
+  const missingStopAuditRow = { key: 'attendance-stop-unavailable', kind: 'attendance-stop', type: 'ATTENDANCE STOP · GPS UNAVAILABLE', label: 'Not included — no confirmed same-day Stop GPS', source: 'Unavailable — historical anchors are reference only', point: null, missing: true };
   const routeAuditStops = useMemo(() => [
-    ...(attendanceEndpoints.startPoint ? [{ key: 'attendance-start', kind: attendanceEndpoints.startSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-start', type: 'START ATTENDANCE', label: attendanceEndpoints.startSource, location: attendanceDay?.startAddress, source: attendanceEndpoints.startSource, point: attendanceEndpoints.startPoint, time: attendanceDay?.start }] : []),
-    ...routeStops.map((visit) => ({ key: visit.id, kind: 'checkin', type: 'CHECK-IN', label: visit.companyName || visit.dealerChannelPartner || 'Unnamed visit', location: visit.checkInLocation, source: visit.coordinateSource, point: visit.start, time: visit.checkIn })),
-    ...(attendanceEndpoints.endPoint ? [{ key: 'attendance-stop', kind: attendanceEndpoints.endSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-stop', type: 'ATTENDANCE STOP', label: attendanceEndpoints.endSource, location: attendanceDay?.stopAddress, source: attendanceEndpoints.endSource, point: attendanceEndpoints.endPoint, time: attendanceDay?.stop }] : []),
-  ], [attendanceEndpoints, attendanceDay, routeStops]);
+    ...(attendanceEndpoints.startPoint ? [{ key: 'attendance-start', sourceRowId: attendanceDay?.startRecordId, kind: 'attendance-start', type: 'START ATTENDANCE', label: attendanceEndpoints.startSource, location: attendanceDay?.startAddress, source: attendanceEndpoints.startSource, point: attendanceEndpoints.startPoint, time: attendanceDay?.start }] : []),
+    ...routeStops.map((visit) => ({ key: visit.id, sourceRowId: visit.id, kind: 'checkin', type: 'CHECK-IN', label: visit.companyName || visit.dealerChannelPartner || 'Unnamed visit', location: visit.checkInLocation, source: visit.coordinateSource, point: visit.start, time: visit.checkIn })),
+    ...(attendanceEndpoints.endPoint ? [{ key: 'attendance-stop', sourceRowId: attendanceDay?.stopRecordId, kind: 'attendance-stop', type: 'ATTENDANCE STOP', label: attendanceEndpoints.endSource, location: attendanceDay?.stopAddress, source: attendanceEndpoints.endSource, point: attendanceEndpoints.endPoint, time: attendanceDay?.stop }] : [missingStopAuditRow]),
+  ], [attendanceEndpoints, attendanceDay, routeStops, filters.date, filters.empId]);
   const suggestedAuditStops = useMemo(() => [
-    ...(attendanceEndpoints.startPoint ? [{ key: 'attendance-start-suggested', kind: attendanceEndpoints.startSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-start', type: 'START ATTENDANCE', label: attendanceEndpoints.startSource, location: attendanceDay?.startAddress, source: attendanceEndpoints.startSource, time: attendanceDay?.start }] : []),
-    ...(analysis?.suggestedVisits || routeStops).map((visit) => ({ key: `suggested-${visit.id}`, kind: 'checkin', type: 'CHECK-IN', label: visit.companyName || visit.dealerChannelPartner || 'Unnamed visit', location: visit.checkInLocation, source: visit.coordinateSource || 'Check-In GPS', time: visit.checkIn })),
-    ...(attendanceEndpoints.endPoint ? [{ key: 'attendance-stop-suggested', kind: attendanceEndpoints.endSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-stop', type: 'ATTENDANCE STOP', label: attendanceEndpoints.endSource, location: attendanceDay?.stopAddress, source: attendanceEndpoints.endSource, time: attendanceDay?.stop }] : []),
-  ], [analysis, routeStops, attendanceEndpoints, attendanceDay]);
+    ...(attendanceEndpoints.startPoint ? [{ key: 'attendance-start-suggested', sourceRowId: attendanceDay?.startRecordId, kind: 'attendance-start', type: 'START ATTENDANCE', label: attendanceEndpoints.startSource, location: attendanceDay?.startAddress, source: attendanceEndpoints.startSource, point: attendanceEndpoints.startPoint, time: attendanceDay?.start }] : []),
+    ...(analysis?.suggestedVisits || routeStops).map((visit) => ({ key: `suggested-${visit.id}`, sourceRowId: visit.id, kind: 'checkin', type: 'CHECK-IN', label: visit.companyName || visit.dealerChannelPartner || 'Unnamed visit', location: visit.checkInLocation, source: visit.coordinateSource || 'Check-In GPS', point: visit.start || visit.end, time: visit.checkIn })),
+    ...(attendanceEndpoints.endPoint ? [{ key: 'attendance-stop-suggested', sourceRowId: attendanceDay?.stopRecordId, kind: 'attendance-stop', type: 'ATTENDANCE STOP', label: attendanceEndpoints.endSource, location: attendanceDay?.stopAddress, source: attendanceEndpoints.endSource, point: attendanceEndpoints.endPoint, time: attendanceDay?.stop }] : [missingStopAuditRow]),
+  ], [analysis, routeStops, attendanceEndpoints, attendanceDay, missingStopAuditRow]);
   const visitDistanceKm = useMemo(() => Object.fromEntries(routeStops.map((visit, index) => {
     const segmentIndex = index + (attendanceEndpoints.startPoint ? 0 : -1);
     return [visit.id, segmentIndex >= 0 ? actualRoute?.segmentKm?.[segmentIndex] ?? null : null];
   })), [routeStops, attendanceEndpoints, actualRoute]);
-  const attendanceStatus = !attendance ? 'Attendance data not available — route starts/ends from available Check-In points.' : !attendanceDay ? (attendanceEndpoints.startPoint && attendanceEndpoints.endPoint ? 'No matching Attendance row for this date — both endpoints use this employee’s inferred historical Attendance anchor.' : 'Attendance endpoint unavailable — no matching Employee ID + date record or valid historical anchor.') : [
-    !attendanceDay?.startPoint && (attendanceEndpoints.startPoint ? 'Start uses inferred historical Attendance anchor' : 'Attendance start GPS unavailable; no historical anchor found'),
-    !attendanceDay?.stopPoint && (attendanceEndpoints.endPoint ? 'Stop uses inferred historical Attendance anchor' : 'Attendance stop GPS unavailable; no historical anchor found'),
-  ].filter(Boolean).join(' · ');
-  const routeCoverageLabel = attendanceEndpoints.startPoint && attendanceEndpoints.endPoint
-    ? `Attendance start (${attendanceEndpoints.startSource}) → chronological Check-Ins → Attendance stop (${attendanceEndpoints.endSource})`
-    : `Available points · ${attendanceEndpoints.startPoint ? attendanceEndpoints.startSource : 'Start unavailable'} → chronological Check-Ins → ${attendanceEndpoints.endPoint ? attendanceEndpoints.endSource : 'Stop unavailable'}`;
+  const attendanceStatus = !attendance
+    ? 'Attendance data not available — route uses available Check-In points only.'
+    : [
+      !attendanceDay && 'No matching Employee ID + date Attendance record; route has no confirmed Attendance endpoints.',
+      attendanceDay && !attendanceEndpoints.startPoint && 'Attendance Start GPS unavailable; route begins at the first valid Check-In.',
+      attendanceDay && !attendanceEndpoints.endPoint && 'Attendance Stop GPS unavailable; route ends at the last valid Check-In and is incomplete.',
+      attendanceEndpoints.historicalAnchor?.point && (!attendanceEndpoints.startPoint || !attendanceEndpoints.endPoint)
+        ? `Historical anchor is reference only and excluded from distance: ${attendanceEndpoints.historicalAnchor.sourceDate || 'source date unavailable'}, ${attendanceEndpoints.historicalAnchor.point.map((value) => value.toFixed(6)).join(', ')} (${attendanceEndpoints.historicalAnchor.repeatedObservations} same-employee observations).`
+        : '',
+    ].filter(Boolean).join(' · ');
+  const routeCoverageLabel = `${attendanceEndpoints.startPoint ? `Attendance start (${attendanceEndpoints.startSource})` : 'Start unavailable'} → chronological Check-Ins → ${attendanceEndpoints.endPoint ? `Attendance stop (${attendanceEndpoints.endSource})` : 'Stop unavailable — incomplete route'}`;
   const assignedDealers = useMemo(() => dealers?.indexes?.byEmployeeId?.[filters.empId]?.filter((dealer) => dealer.point).slice(0, 400) || [], [dealers, filters.empId]);
   const dealerMatches = useMemo(() => routeVisits.map((visit) => {
     if (!visit.start || !assignedDealers.length) return null;
@@ -180,8 +201,32 @@ export default function Dashboard({ report, filters, setFilters, attendance, dea
       const actual = await routePoints(routePointSequence);
       const localPlan = analyzeRoute(routeStops, actual.km, undefined, attendanceEndpoints);
       const suggestedPoints = [...(attendanceEndpoints.startPoint ? [attendanceEndpoints.startPoint] : []), ...localPlan.suggestedVisits.map((visit) => visit.start).filter(Boolean), ...(attendanceEndpoints.endPoint ? [attendanceEndpoints.endPoint] : [])];
-      const suggested = await routePoints(suggestedPoints);
-      const finalAnalysis = analyzeRoute(routeStops, actual.km, suggested.km, attendanceEndpoints);
+      const optimizedCandidate = await routePoints(suggestedPoints);
+      const improvement = selectRouteImprovement({
+        actual,
+        candidate: optimizedCandidate,
+        chronologicalVisits: routeStops,
+        optimizedVisits: localPlan.suggestedVisits,
+        actualPoints: routePointSequence,
+        optimizedPoints: suggestedPoints,
+      });
+      const { comparable: comparableDistanceSources, improved: roadImproved, route: suggested } = improvement;
+      const analyzed = analyzeRoute(routeStops, actual.km, suggested.km, attendanceEndpoints);
+      const finalAnalysis = {
+        ...analyzed,
+        actualKm: actual.km,
+        suggestedKm: suggested.km,
+        saving: actual.km - suggested.km,
+        suggestedVisits: improvement.visits,
+        suggestedPoints: improvement.points,
+        comparableDistanceSources,
+        roadImproved,
+        explanation: roadImproved
+          ? analyzed.explanation
+          : comparableDistanceSources
+            ? 'No shorter road-distance order was found; the recorded chronological sequence is shown.'
+            : 'The route-distance comparison was unavailable; the recorded chronological sequence is shown.',
+      };
       if (!activeRequest) return;
       setActualRoute(actual); setSuggestedRoute(suggested); setAnalysis(finalAnalysis);
       setAnalysisCache((cache) => ({ ...cache, [`${filters.empId}|${filters.date}`]: finalAnalysis }));
@@ -262,16 +307,17 @@ export default function Dashboard({ report, filters, setFilters, attendance, dea
     {eligible && <section className="route-comparison">
       <div className="comparison-head"><div><span className="eyebrow">ROUTE COMPARISON</span><h2>Actual journey vs. optimized visit order</h2></div><div className="map-controls"><button className={mapMode === 'actual' ? 'selected' : ''} onClick={() => setMapMode('actual')}>Actual</button><button className={mapMode === 'suggested' ? 'selected' : ''} onClick={() => { setMapMode('suggested'); setShowSuggested(true); }}>Suggested</button><button className={mapMode === 'both' ? 'selected' : ''} onClick={() => { setMapMode('both'); setShowSuggested(true); }}>Both</button></div></div>
       {attendanceStatus && <div className="notice route-attendance-status">{attendanceStatus}</div>}
+      {analysis && !analysis.roadImproved && <div className="notice route-attendance-status">No shorter route was found with the displayed distance method. Suggested Route shows the recorded chronological order and its matching distance.</div>}
       {actualRoute?.source === 'straight' && <div className="notice route-attendance-status">ESTIMATED — road routing is unavailable; these distances use straight-line GPS calculation.</div>}
       <div className={`comparison-layout ${mapMode}`}>
         {mapMode !== 'suggested' && <section className="card map-card actual-map"><div className="section-head"><div><span className="eyebrow">ACTUAL ROUTE</span><h2>{actualRoute ? `${num(actualRoute.km, 2)} km` : 'Calculating…'}</h2><p>{routeCoverageLabel} · {actualRoute?.source === 'straight' ? 'ESTIMATED straight-line fallback' : actualRoute?.source === 'road' ? 'Road routing' : 'Route status unavailable'}</p></div></div><MapView visits={routeStops} route={actualRoute} activeIndex={active} routeColor="#2563eb" routeLabel="Actual Route" dealers={showDealers ? assignedDealers : []} specialLocations={[attendanceEndpoints.startPoint && { point: attendanceEndpoints.startPoint, label: attendanceEndpoints.startSource, role: attendanceEndpoints.startSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-start', address: attendanceDay?.startAddress }, attendanceEndpoints.endPoint && { point: attendanceEndpoints.endPoint, label: attendanceEndpoints.endSource, role: attendanceEndpoints.endSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-stop', address: attendanceDay?.stopAddress }].filter(Boolean)}/></section>}
-        {mapMode !== 'actual' && showSuggested && <section className="card map-card suggested-map"><div className="section-head"><div><span className="eyebrow">SUGGESTED ROUTE</span><h2>{suggestedRoute ? `${num(suggestedRoute.km, 2)} km` : 'Optimizing…'}</h2><p>Fixed Attendance endpoints; only Check-In order optimized · {suggestedRoute?.source === 'straight' ? 'ESTIMATED straight-line fallback' : suggestedRoute?.source === 'road' ? 'Road routing' : 'Route status unavailable'}</p></div></div><MapView visits={analysis?.suggestedVisits || routeStops} route={suggestedRoute} activeIndex={-1} routeColor="#149447" routeLabel="Suggested" specialLocations={[attendanceEndpoints.startPoint && { point: attendanceEndpoints.startPoint, label: attendanceEndpoints.startSource, role: attendanceEndpoints.startSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-start', address: attendanceDay?.startAddress }, attendanceEndpoints.endPoint && { point: attendanceEndpoints.endPoint, label: attendanceEndpoints.endSource, role: attendanceEndpoints.endSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-stop', address: attendanceDay?.stopAddress }].filter(Boolean)}/></section>}
+        {mapMode !== 'actual' && showSuggested && <section className="card map-card suggested-map"><div className="section-head"><div><span className="eyebrow">SUGGESTED ROUTE</span><h2>{suggestedRoute ? `${num(suggestedRoute.km, 2)} km` : 'Optimizing…'}</h2><p>{analysis?.roadImproved ? 'Fixed confirmed Attendance endpoints; Check-In order improved using the displayed distance method' : 'No shorter order found; chronological Check-In sequence shown'} · {suggestedRoute?.source === 'straight' ? 'ESTIMATED straight-line fallback' : suggestedRoute?.source === 'road' ? 'Road routing' : 'Route status unavailable'}</p></div></div><MapView visits={analysis?.suggestedVisits || routeStops} route={suggestedRoute} activeIndex={-1} routeColor="#149447" routeLabel="Suggested" specialLocations={[attendanceEndpoints.startPoint && { point: attendanceEndpoints.startPoint, label: attendanceEndpoints.startSource, role: attendanceEndpoints.startSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-start', address: attendanceDay?.startAddress }, attendanceEndpoints.endPoint && { point: attendanceEndpoints.endPoint, label: attendanceEndpoints.endSource, role: attendanceEndpoints.endSource === 'Inferred Attendance Anchor' ? 'inferred-anchor' : 'attendance-stop', address: attendanceDay?.stopAddress }].filter(Boolean)}/></section>}
         <ComparisonPanel analysis={analysis} actualRoute={actualRoute} suggestedRoute={suggestedRoute}/>
       </div>
       <div className="route-actions"><button className="primary compact" onClick={() => setShowSuggested((value) => !value)}>{showSuggested ? 'Hide Suggested Route' : 'View Suggested Route'}</button><button className="secondary" onClick={playRoute}>▶ Play Actual Route</button>{loading && <small>Calculating cached road routes…</small>}</div>
       {routeVisits.length > 0 && <div className="comparison-slider"><b>Current visit {Math.min(active + 1, routeVisits.length)} / {routeVisits.length}</b><small>{routeVisits[active]?.companyName || 'Unnamed visit'}</small><input type="range" min="0" max={Math.max(0, routeVisits.length - 1)} value={Math.min(active, Math.max(0, routeVisits.length - 1))} onChange={(event) => setActive(Number(event.target.value))}/></div>}
       {analysis && <div className="comparison-stats"><span><b>Potential saving</b>{num(analysis.saving, 2)} km</span><span><b>Distance reduction</b>{num((analysis.saving / Math.max(analysis.actualKm, 0.01)) * 100, 1)}%</span></div>}
-      <div className="order-comparison"><CheckpointOrderTable title={`Actual Visit Order (${num(actualRoute?.km || 0, 2)} km)`} hint="Attendance endpoints enclose the recorded chronological check-in sequence." stops={routeAuditStops} route={actualRoute}/><CheckpointOrderTable title={`Suggested Visit Order (${num(suggestedRoute?.km || 0, 2)} km)`} hint="Attendance endpoints remain fixed while only the intermediate check-ins are reordered." stops={suggestedAuditStops} route={suggestedRoute} tone="suggested"/></div>
+      <div className="order-comparison"><CheckpointOrderTable title={`Actual Visit Order (${num(actualRoute?.km || 0, 2)} km)`} hint="Confirmed same-day Attendance GPS encloses chronological Check-Ins; missing endpoints are excluded." stops={routeAuditStops} route={actualRoute}/><CheckpointOrderTable title={`Suggested Visit Order (${num(suggestedRoute?.km || 0, 2)} km)`} hint="No shorter order was found; this table shows the chronological sequence with identical route coverage." stops={suggestedAuditStops} route={suggestedRoute} tone="suggested"/></div>
       <VisitTable visits={displayedVisits} route={actualRoute} visitDistanceKm={visitDistanceKm} order={order} setOrder={setOrder} activeId={routeVisits[active]?.id} onSelect={(id) => setActive(Math.max(0, routeVisits.findIndex((visit) => visit.id === id)))}/>
     </section>}
   </main>;

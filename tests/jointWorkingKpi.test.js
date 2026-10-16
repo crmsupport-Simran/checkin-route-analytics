@@ -48,7 +48,9 @@ test('1-15TH adds the two weekly KPI totals, detail summaries, and CSV values', 
     assert.equal(result.values.q3.firstHalf, 2);
     assert.equal(result.values.q1.secondHalf, 2);
     assert.equal(result.values.q2.secondHalf, 4);
-    assert.equal(result.values.q3.secondHalf, 2);
+    // Day 16 and day 23 are in the same WEEK-3 (16-23) bucket, so the
+    // distributor is counted once in the second-half weekly subtotal.
+    assert.equal(result.values.q3.secondHalf, 1);
     assert.equal(result.details.q1ManagerSummariesByBucket.week1[0].visitDays, result.values.q1.week1);
     assert.equal(result.details.q1ManagerSummariesByBucket.week1[0].types, 'DEALER, OTHER');
     assert.equal(result.details.q1ManagerSummariesByBucket.firstHalf[0].visitDays, result.values.q1.firstHalf);
