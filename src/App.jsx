@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import UploadPanel from './components/UploadPanel';
 import FilterPanel from './components/FilterPanel';
 import Dashboard from './components/Dashboard';
@@ -10,8 +10,19 @@ import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
 
 const emptyFilters = { date: '', user: '', empId: '', manager: '', type: '', search: '' };
+const APPEARANCE_KEY = 'checkin-route-analytics-appearance';
+
+function getStoredAppearance() {
+  try {
+    const saved = localStorage.getItem(APPEARANCE_KEY);
+    return ['light', 'dark', 'system'].includes(saved) ? saved : 'light';
+  } catch {
+    return 'light';
+  }
+}
 
 export default function App() {
+  const [appearance, setAppearance] = useState(getStoredAppearance);
   const [report, setReport] = useState(null);
   const [integrity, setIntegrity] = useState(null);
   const [attendance, setAttendance] = useState(null);
@@ -27,6 +38,19 @@ export default function App() {
   const uploadId = useRef(0);
   const reportFile = useRef(null);
   const supplementalFiles = useRef({ attendance: null, dealers: null });
+
+  useEffect(() => {
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const applyAppearance = () => {
+      const resolved = appearance === 'system' ? (systemTheme.matches ? 'dark' : 'light') : appearance;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.style.colorScheme = resolved;
+    };
+    applyAppearance();
+    systemTheme.addEventListener?.('change', applyAppearance);
+    try { localStorage.setItem(APPEARANCE_KEY, appearance); } catch { /* Keep the theme usable when storage is unavailable. */ }
+    return () => systemTheme.removeEventListener?.('change', applyAppearance);
+  }, [appearance]);
 
   const handleReport = async (file, { keepCurrent = false } = {}) => {
     reportFile.current = file;
@@ -88,6 +112,13 @@ export default function App() {
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
         <button className={view === 'employee-tour' ? 'active' : ''} onClick={() => setView('employee-tour')}>Employee Tour Plan</button>
+        <label className="appearance-control">Appearance
+          <select aria-label="Appearance" value={appearance} onChange={(event) => setAppearance(event.target.value)}>
+            <option value="light">☀️ Light</option>
+            <option value="dark">🌙 Dark</option>
+            <option value="system">System</option>
+          </select>
+        </label>
         <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers)} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
       </nav>
     </div></header>
