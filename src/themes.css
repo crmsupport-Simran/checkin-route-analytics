@@ -77,6 +77,15 @@
 :root[data-theme="dark"] .main-nav .refresh-button:hover:not(:disabled) { background: #49361c; }
 :root[data-theme="dark"] .dropzone { color: #a9c9ff; background: #172842; border-color: #5277ad; }
 :root[data-theme="dark"] .dropzone.drag { background: #20395e; }
+:root[data-theme="dark"] .layer-upload,
+:root[data-theme="dark"] .layer-upload.future {
+  color: #e6edf7;
+  background: #172334;
+  border-color: #3a4b64;
+}
+:root[data-theme="dark"] .layer-upload.drag { background: #20395e; border-color: #5f91dc; }
+:root[data-theme="dark"] .layer-upload b { color: #edf3fc; }
+:root[data-theme="dark"] .layer-upload small { color: #a8b8ce; }
 :root[data-theme="dark"] th { color: #afc0d6; border-color: #33445b; }
 :root[data-theme="dark"] td { color: #dce6f3; border-color: #29394e; }
 :root[data-theme="dark"] tbody tr.selected-row { background: #1c3150; }
