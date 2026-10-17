@@ -104,6 +104,59 @@
 :root[data-theme="dark"] .type-bar { background: #34445b; }
 :root[data-theme="dark"] .integrity-kpi span { color: #b6c6dc; }
 :root[data-theme="dark"] .integrity-title p { color: #b6c6dc; }
+:root[data-theme="dark"] .integrity-kpi {
+  color: #edf3fc;
+  background: #172334;
+  border-color: #354760;
+}
+:root[data-theme="dark"] .integrity-kpi strong { color: #edf3fc; }
+:root[data-theme="dark"] .integrity-kpi.normal strong { color: #68dda1; }
+:root[data-theme="dark"] .integrity-kpi.duplicate strong { color: #ffd06f; }
+:root[data-theme="dark"] .integrity-kpi.high strong { color: #ff9ba8; }
+:root[data-theme="dark"] .integrity-tabs button {
+  color: #c8d5e7;
+  background: #172334;
+  border-color: #3a4b64;
+}
+:root[data-theme="dark"] .integrity-tabs button.selected { color: #b7d3ff; background: #20385a; border-color: #527db8; }
+:root[data-theme="dark"] .integrity-status { color: #9be2b5; background: #173329; }
+:root[data-theme="dark"] .integrity-status.duplicate-check-in { color: #ffdc89; background: #3a3019; }
+:root[data-theme="dark"] .integrity-status.high-duplicate-activity,
+:root[data-theme="dark"] .integrity-status.very-high-duplicate-activity { color: #ffadb7; background: #3b2028; }
+:root[data-theme="dark"] .analysis-grid span,
+:root[data-theme="dark"] .day-breakdown span,
+:root[data-theme="dark"] .plan-follow-kpis span { color: #d1deef; background: #202d40; }
+:root[data-theme="dark"] .analysis-grid b { color: #f0f5fc; }
+:root[data-theme="dark"] .day-breakdown b,
+:root[data-theme="dark"] .plan-follow-kpis b { color: #aebed3; }
+:root[data-theme="dark"] .map-controls button,
+:root[data-theme="dark"] .plan-list button,
+:root[data-theme="dark"] .clear-filter {
+  color: #dce6f3;
+  background: #202d40;
+  border-color: #3a4b64;
+}
+:root[data-theme="dark"] .map-controls button.selected { color: #fff; background: #1455ce; border-color: #1455ce; }
+:root[data-theme="dark"] .clear-filter:hover { color: #fff; background: #354760; }
+:root[data-theme="dark"] .comparison-slider { color: #e6edf7; background: #172334; border-color: #354760; }
+:root[data-theme="dark"] .comparison-stats span { color: #b7edcb; background: #173329; }
+:root[data-theme="dark"] .comparison-stats b { color: #a8d4b7; }
+:root[data-theme="dark"] .comparison-panel .good { color: #68dda1; }
+:root[data-theme="dark"] .quality { color: #9be2b5; background: #173329; }
+:root[data-theme="dark"] .quality.below-average { color: #ffadb7; background: #3b2028; }
+:root[data-theme="dark"] .quality.average { color: #ffdc89; background: #3a3019; }
+:root[data-theme="dark"] .suggestion-copy { color: #c9ddf7; background: #1b2d43; }
+:root[data-theme="dark"] .enrichment-card dt { color: #b6c6dc; }
+:root[data-theme="dark"] .tour-header p,
+:root[data-theme="dark"] .monthly-controls p { color: #b6c6dc; }
+:root[data-theme="dark"] .plan-status { color: #b7d3ff; background: #20385a; }
+:root[data-theme="dark"] .employee-tour-report .employee-anchor-analysis > summary { color: #c8dcf7; }
+:root[data-theme="dark"] .coordinate-validation { color: #a8b8ce; }
+:root[data-theme="dark"] .route-debug summary { color: #c8dcf7; }
+:root[data-theme="dark"] .route-debug dt { color: #b6c6dc; }
+:root[data-theme="dark"] .route-debug dd small { color: #a8b8ce; }
+:root[data-theme="dark"] .route-map-filters label { color: #b6c6dc; }
+:root[data-theme="dark"] .joint-kpi-question-exports > span { color: #b6c6dc; }
 :root[data-theme="dark"] .joint-kpi-table thead th { background: #1b2a3d; color: #dce6f3; }
 :root[data-theme="dark"] .joint-kpi-table tbody td { background: #172334; color: #edf3fc; }
 :root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(5),
