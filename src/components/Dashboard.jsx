@@ -88,6 +88,30 @@ export default function Dashboard({ report, filters, setFilters, attendance, dea
   const [active, setActive] = useState(0);
   const [exportScope, setExportScope] = useState('selected');
   const [showDealers, setShowDealers] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [showEmployeeSuggestions, setShowEmployeeSuggestions] = useState(false);
+  const [activeEmployeeSuggestion, setActiveEmployeeSuggestion] = useState(0);
+
+  useEffect(() => {
+    const selected = indexes.employees.find((employee) => employee.empId === filters.empId);
+    setEmployeeSearch(selected ? `${selected.name} — ${selected.empId}` : '');
+  }, [filters.empId, indexes.employees]);
+
+  const employeeSuggestions = useMemo(() => {
+    const query = employeeSearch.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return indexes.employees
+      .filter((employee) => `${employee.name} ${employee.empId}`.toLocaleLowerCase().includes(query))
+      .slice(0, 10);
+  }, [employeeSearch, indexes.employees]);
+
+  const selectRouteEmployee = (employee) => {
+    if (!employee) return;
+    setFilters((current) => ({ ...current, empId: employee.empId, user: employee.name }));
+    setEmployeeSearch(`${employee.name} — ${employee.empId}`);
+    setShowEmployeeSuggestions(false);
+    setActiveEmployeeSuggestion(0);
+  };
 
   const filtered = useMemo(() => {
     let ids = null;
@@ -299,7 +323,10 @@ export default function Dashboard({ report, filters, setFilters, attendance, dea
     {filters.empId && filters.date && <section className="card performance-report"><div className="section-head"><div><span className="eyebrow">ROUTE PERFORMANCE REPORT</span><h2>Selected employee/day performance</h2></div><span>Tour Plan not uploaded — estimated/planned fields remain unavailable.</span></div><div className="table-scroll"><table><thead><tr><th>Date</th><th>Employee</th><th>Emp ID</th><th>Reporting Manager</th><th>Zonal Manager</th><th>Estimated / Planned KM</th><th>Actual KM</th><th>Optimized KM</th><th>Potential Saving</th><th>Visits Completed</th><th>Attendance Google KM</th><th>Working Time</th><th>Route Pattern</th><th>Route Quality</th></tr></thead><tbody><tr><td>{filters.date}</td><td>{filters.user || attendanceDay?.employee || '—'}</td><td>{filters.empId}</td><td>{attendanceDay?.reportingManager || routeVisits[0]?.reportingManager || '—'}</td><td>{attendanceDay?.zonalManager || routeVisits[0]?.zonalManager || '—'}</td><td>—</td><td>{actualRoute ? `${num(actualRoute.km, 2)} km` : '—'}</td><td>{suggestedRoute ? `${num(suggestedRoute.km, 2)} km` : '—'}</td><td>{analysis ? `${num(analysis.saving, 2)} km` : '—'}</td><td>{selectedVisits.length}</td><td>{attendanceDay ? `${num(attendanceDay.googleKm, 2)} km` : '—'}</td><td>{attendanceDay?.workingTime || '—'}</td><td>{analysis?.pattern || '—'}</td><td>{analysis?.quality || '—'}</td></tr></tbody></table></div></section>}
 
     <section className="card route-map-filters" aria-label="Route map filters">
-      <div><label htmlFor="route-map-employee">Employee</label><select id="route-map-employee" value={filters.empId} onChange={(event) => { const employee = indexes.employees.find((item) => item.empId === event.target.value); setFilters((current) => ({ ...current, empId: event.target.value, user: employee?.name || '' })); }}><option value="">Select employee</option>{indexes.employees.map((employee) => <option key={employee.empId} value={employee.empId}>{employee.name} — {employee.empId}</option>)}</select></div>
+      <div className="route-employee-search"><label htmlFor="route-employee-search">Search Employee</label><input id="route-employee-search" type="search" autoComplete="off" placeholder="Type employee name or ID" value={employeeSearch} role="combobox" aria-autocomplete="list" aria-expanded={showEmployeeSuggestions && Boolean(employeeSearch.trim())} aria-controls="route-employee-suggestions" onFocus={() => setShowEmployeeSuggestions(true)} onBlur={() => setTimeout(() => setShowEmployeeSuggestions(false), 120)} onChange={(event) => { setEmployeeSearch(event.target.value); setActiveEmployeeSuggestion(0); setShowEmployeeSuggestions(true); }} onKeyDown={(event) => { if (event.key === 'ArrowDown' && employeeSuggestions.length) { event.preventDefault(); setShowEmployeeSuggestions(true); setActiveEmployeeSuggestion((current) => Math.min(current + 1, employeeSuggestions.length - 1)); } else if (event.key === 'ArrowUp' && employeeSuggestions.length) { event.preventDefault(); setActiveEmployeeSuggestion((current) => Math.max(0, current - 1)); } else if (event.key === 'Enter' && employeeSuggestions.length) { event.preventDefault(); selectRouteEmployee(employeeSuggestions[activeEmployeeSuggestion] || employeeSuggestions[0]); } else if (event.key === 'Escape') setShowEmployeeSuggestions(false); }}/>
+        {showEmployeeSuggestions && employeeSearch.trim() && <div className="route-employee-suggestions" id="route-employee-suggestions" role="listbox" aria-label="Matching employees">{employeeSuggestions.length ? employeeSuggestions.map((employee, index) => <button type="button" role="option" aria-selected={index === activeEmployeeSuggestion} className={index === activeEmployeeSuggestion ? 'highlighted' : ''} key={employee.empId} onMouseDown={(event) => event.preventDefault()} onClick={() => selectRouteEmployee(employee)}><span>{employee.name}</span><small>ID {employee.empId}</small></button>) : <p>No matching employee found</p>}</div>}
+      </div>
+      <div><label htmlFor="route-map-employee">Employee</label><select id="route-map-employee" value={filters.empId} onChange={(event) => { const employee = indexes.employees.find((item) => item.empId === event.target.value); selectRouteEmployee(employee); }}>{!filters.empId && <option value="">Select employee</option>}{indexes.employees.map((employee) => <option key={employee.empId} value={employee.empId}>{employee.name} — {employee.empId}</option>)}</select></div>
       <div><label htmlFor="route-map-date">Date</label><select id="route-map-date" value={filters.date} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))}><option value="">Select date</option>{indexes.dates.map((date) => <option key={date} value={date}>{date} · {displayDate(new Date(`${date}T00:00:00`))}</option>)}</select></div>
     </section>
     {!eligible && <section className="notice">{filters.empId && filters.date ? 'At least two valid GPS points are needed to calculate a route. Attendance endpoints or Check-In GPS coordinates are unavailable for this employee/date.' : 'Select an employee and a single date above to view the route. This keeps large reports responsive and never draws thousands of map pins at once.'}</section>}

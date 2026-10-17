@@ -156,6 +156,16 @@
 :root[data-theme="dark"] .route-debug dt { color: #b6c6dc; }
 :root[data-theme="dark"] .route-debug dd small { color: #a8b8ce; }
 :root[data-theme="dark"] .route-map-filters label { color: #b6c6dc; }
+:root[data-theme="dark"] .route-employee-suggestions {
+  background: #172334;
+  border-color: #3a4b64;
+  box-shadow: 0 8px 22px #0008;
+}
+:root[data-theme="dark"] .route-employee-suggestions button { color: #dce6f3; }
+:root[data-theme="dark"] .route-employee-suggestions button:hover,
+:root[data-theme="dark"] .route-employee-suggestions button.highlighted { color: #c4dcff; background: #20385a; }
+:root[data-theme="dark"] .route-employee-suggestions button small,
+:root[data-theme="dark"] .route-employee-suggestions p { color: #a8b8ce; }
 :root[data-theme="dark"] .joint-kpi-question-exports > span { color: #b6c6dc; }
 :root[data-theme="dark"] .joint-kpi-table thead th { background: #1b2a3d; color: #dce6f3; }
 :root[data-theme="dark"] .joint-kpi-table tbody td { background: #172334; color: #edf3fc; }
