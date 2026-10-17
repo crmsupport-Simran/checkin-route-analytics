@@ -97,6 +97,13 @@
 :root[data-theme="dark"] .joint-debug-table td,
 :root[data-theme="dark"] .joint-detail-grid p,
 :root[data-theme="dark"] .joint-detail-grid h4 { color: #c5d4e7; }
+:root[data-theme="dark"] .type-grid article { border-color: #3a4b64; }
+:root[data-theme="dark"] .type-grid dl div { border-color: #33445b; }
+:root[data-theme="dark"] .type-grid dt { color: #b6c6dc; }
+:root[data-theme="dark"] .type-grid dd { color: #f0f5fc; }
+:root[data-theme="dark"] .type-bar { background: #34445b; }
+:root[data-theme="dark"] .integrity-kpi span { color: #b6c6dc; }
+:root[data-theme="dark"] .integrity-title p { color: #b6c6dc; }
 :root[data-theme="dark"] .joint-kpi-table thead th { background: #1b2a3d; color: #dce6f3; }
 :root[data-theme="dark"] .joint-kpi-table tbody td { background: #172334; color: #edf3fc; }
 :root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(5),
