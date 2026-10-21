@@ -13,7 +13,6 @@ The application has five report tabs. It works with the reports uploaded in the 
 | **Tour Plan** | Create a future daily or monthly dealer plan for an employee, inspect the route on a map, approve/lock a plan, compare actual visits to the plan, and export the customer plan. | Dealer Master required; Check-In and Attendance reports add actual-visit/base context. |
 | **Check-in Analysis** | Find repeated employee/date/location/type check-in groups for review; filter and export a verification list. | Check-In / Check-Out report. |
 | **Joint Working KPI** | Calculate Q1, Q2, and Q3 for a selected calendar month; inspect calculation details and export the KPI table. | Check-In / Check-Out report. |
-| **Q1–Q3 Reports** | Management dashboard with KPI cards, bucket comparisons, charts, manager summaries, source-row/exclusion audits, designation/date quality audits, and Excel/CSV downloads. | Check-In / Check-Out report. |
 | **Employee Tour Plan** | Produce a day-wise historical movement report, infer regular/temporary attendance anchors, calculate expected route KM, review route segments and reconcile attendance with check-ins. | Check-In and Attendance reports recommended; Dealer Master can enrich missing visit GPS. |
 
 ## Standard operating procedure
@@ -73,20 +72,20 @@ The report takes its dates and rows from the currently loaded Check-In report. M
 #### Calendar buckets
 
 - WEEK-1: days 1–7
-- WEEK-2: days 8–15
-- 1-15TH: WEEK-1 + WEEK-2 (days 1–15)
-- WEEK-3: days 16–23
-- WEEK-4: days 24 through the selected month's final day
-- Second half: WEEK-3 + WEEK-4 (day 16 through the selected month's final day)
+- WEEK-2: days 8–14
+- 1-15TH: days 1–15, calculated independently
+- WEEK-3: days 16–22
+- WEEK-4: days 23 through the selected month's final day
+- Second half: day 16 through the selected month's final day
 
-The final day is determined from the selected month and year, so February uses 28/29, 30-day months use 30, and 31-day months include day 31. Rows with a blank or invalid Date are audited and excluded; a Check-In timestamp cannot replace the Date column.
+The final day is determined from the selected month and year, so February uses 28/29, 30-day months use 30, and 31-day months include day 31. The 1–15 and second-half totals are independently calculated for their complete date ranges; they are not sums of adjacent week cells.
 
 #### Q1 — Manager-wise Joint Working pivot subtotal
 
 1. **Sales User / Designation** identifies the Manager/Senior. The application's approved Sales User manager designations are GM - SALES, DGM-SALES, AGM-SALES, SR.MANAGER-SALES (9), MANAGER-SALES (including code (4)), DEPUTY MANAGER-SALES (including code (4)), ASSISTANT MANAGER-SALES (including code (4) and NBD variants), SR. ASSISTANT MANAGER-SALES, TERRITORY SALES INCHARGE (including code (4)), TERRITORY SALES MANAGER (including code (4)), and TERRITORY SALES OFFICER (including NBD/code variants).
 2. **Joint Working Designation** identifies the Executive/BDO partner. Accepted values are EXECUTIVE-SALES (including code (4)), BUSINESS DEVELOPMENT OFFICER (including code (4)), and SR. EXECUTIVE-SALES (including code (4)).
 3. Joint Working must be **YES**, and Joint Working Name must be nonblank.
-4. Use **Emp ID** as the Manager identity, falling back to normalized Sales User Name when Emp ID is blank. For each Manager and bucket, count each distinct visit date once, then sum the Manager subtotals. The existing service and regression tests establish this manager-wise unique-date rule. The historical October 1–15 reference is **32**; it is a reconciliation target, never a hardcoded value.
+4. For each Manager and bucket, count each populated **Type** column once, then sum those manager subtotals. This reproduces the supplied pivot's G-column method (October validation subtotal: **32** for 1-15TH). Q1 is therefore the manager-wise pivot subtotal, not a count of raw check-in rows or unique calendar dates.
 
 #### Q2 — Retailer visits with a Senior
 
@@ -97,16 +96,11 @@ Uses the same Manager/Senior designation, Executive/BDO **Joint Working Designat
 - Sales User / Designation must be one of: DEPUTY MANAGER-SALES (with/without (4)), MANAGER-SALES (with/without (4)), ASSISTANT MANAGER-SALES (including (4) and ASSISTANT MANAGER-SALES (NBD) (4)), AGM-SALES, SR.MANAGER-SALES (9), or DGM-SALES.
 - Type must be **CHANNEL PARTNER**.
 - Count unique distributor identifiers in each bucket, choosing the first available value: Dealer Channel Partner Code → Dealer Channel Partner → Company Name.
-- Joint Working = YES is not required. The same normalized distributor identifier is counted once globally across all eligible Senior users within each bucket. The existing service uses a bucket-level Set and its audit keeps one row per identifier; this is not per-Senior deduplication.
-- The historical October 1–15 reconciliation reference was **30**; it is never hardcoded.
+- The October 1–15 validation target was **30**.
 
 Use **View Calculation Details** to inspect qualifying rows, role breakdowns, manager subtotals, exclusions, and unique distributor sets. Export Joint Working KPI downloads the selected month's bucket table.
 
-### 5. Q1–Q3 Reports Dashboard
-
-This management view uses the same prepared Check-In records and `calculateJointWorkingKpis` service as the Joint Working KPI tab. It shows monthly KPI cards, six-bucket results, bucket charts, Q1/Q2 manager summaries, descriptive Q3 Senior attribution, Q1/Q2/Q3 source audits, zonal exclusions, designation approvals, and invalid Date rows. The Q3 overall result is globally unique per bucket; its descriptive Senior attribution must not be summed to reproduce the KPI. Download the Excel workbook for separate summary/audit sheets or export the KPI/source audits individually as CSV. All report views recalculate when a different file is loaded or the month changes.
-
-### 6. Employee Tour Plan
+### 5. Employee Tour Plan
 
 - Creates one row per employee/date found in the union of the uploaded Check-In and Attendance data. The month and employee filters scope the report.
 - Attendance start/stop GPS points are clustered when they are within 500 metres. The most repeatedly paired start/stop location is the primary regular anchor; confidence is based on repeated observations. A different location is called a temporary hotel/stay only when it appears as both start and stop on at least two consecutive attendance dates. Other locations are shown as attendance locations; the app does not assume every alternate location is a hotel.
@@ -145,3 +139,9 @@ Upload `.xlsx`, `.xls`, or `.csv` files.
 - Local development: `npm install`, then `npm run dev`.
 - Production build: `npm run build` (output is generated in `dist/`).
 - GitHub Pages deployment is triggered by pushing to the repository's `main` branch.
+
+## Q1–Q3 Reports dashboard
+
+The separate **Q1–Q3 Reports** tab uses the loaded Check-In data and its own designation configuration and calculation service. It does not call the Existing Joint Working KPI calculation. Q1 uses the report's Manager + TSO/TSI/TSM designation group, Joint Working = YES, a named BDO with an approved Executive/BDO Joint Working Designation, and Type = DEALER; each Manager ID + Date contributes one day per bucket. Q2 uses the approved group and joint-working fields and counts qualifying DEALER + OTHER source check-in rows, grouped in the weekly buckets. Q3 uses the separately approved Senior designation list and CHANNEL PARTNER type; a normalized distributor identifier (Dealer Channel Partner Code → Dealer Channel Partner → Company Name) is unique globally within each bucket. All report-designated Zonal Manager exclusions are listed in the dashboard audits.
+
+Buckets follow calendar month length: WEEK-1 days 1–7; WEEK-2 8–15; FIRST HALF 1–15; WEEK-3 16–23; WEEK-4 24–month end; SECOND HALF 16–month end. Half totals add their weekly results. The dashboard has bucket charts, manager summaries, row-level inclusion/exclusion audits, designation and data-quality audits, Excel workbook and CSV downloads. Historical October totals shown for reconciliation are references only; calculations are sourced from the selected Check-In file.

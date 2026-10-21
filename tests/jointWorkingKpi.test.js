@@ -69,24 +69,20 @@ test('1-15TH adds the two weekly KPI totals, detail summaries, and CSV values', 
   }
 });
 
-test('Q1 uses Manager Sales User identity and Q3 is globally unique per bucket', () => {
-  const source = [
-    { sourceIndex: 0, id: '0-10', date: '01/10/2026', salesUserName: 'Manager A', empId: '10', designation: ' manager-sales ', jointWorking: ' yes ', jointWorkingName: 'Executive A', jointWorkingDesignation: 'EXECUTIVE-SALES (4)', type: 'DEALER' },
-    { sourceIndex: 1, id: '1-10', date: '01/10/2026', salesUserName: 'Manager A', empId: '10', designation: 'MANAGER-SALES', jointWorking: 'YES', jointWorkingName: 'Executive B', jointWorkingDesignation: 'EXECUTIVE-SALES', type: 'OTHER' },
-    { sourceIndex: 2, id: '2-20', date: '01/10/2026', salesUserName: 'Manager B', empId: '20', designation: 'AGM-SALES', jointWorking: 'YES', jointWorkingName: 'Executive C', jointWorkingDesignation: 'BUSINESS DEVELOPMENT OFFICER', type: 'DEALER' },
-    { sourceIndex: 3, id: '3-30', date: '01/10/2026', salesUserName: 'Senior A', empId: '30', designation: 'MANAGER-SALES', type: 'CHANNEL PARTNER', dealerChannelPartnerCode: ' cp-01 ' },
-    { sourceIndex: 4, id: '4-40', date: '02/10/2026', salesUserName: 'Senior B', empId: '40', designation: 'DEPUTY MANAGER-SALES', type: 'CHANNEL PARTNER', dealerChannelPartner: 'CP-01' },
-    { sourceIndex: 5, id: '5-50', date: '01/10/2026', salesUserName: 'Manager C', empId: '50', designation: 'MANAGER-SALES', jointWorking: 'YES', jointWorkingName: 'Executive D', jointWorkingDesignation: 'EXECUTIVE-SALES', type: 'DEALER', zonalManager: ' ShobhIt   Goel ' },
-    { sourceIndex: 6, id: '6-60', date: '', dateKey: '2026-10-01', salesUserName: 'No Date', empId: '60', checkIn: new Date('2026-10-01T10:00:00'), designation: 'MANAGER-SALES' },
+test('existing Joint Working KPI retains its pre-dashboard Manager calculation and exports', () => {
+  const records = [
+    { date: '01/10/2026', salesUserName: 'Manager A', empId: '100', designation: 'MANAGER-SALES', jointWorking: 'YES', jointWorkingName: 'Executive A', jointWorkingDesignation: 'EXECUTIVE-SALES', type: 'DEALER' },
+    { date: '01/10/2026', salesUserName: 'Manager A', empId: '100', designation: 'MANAGER-SALES', jointWorking: 'YES', jointWorkingName: 'Executive A', jointWorkingDesignation: 'EXECUTIVE-SALES', type: 'DEALER' },
+    { date: '09/10/2026', salesUserName: 'Manager A', empId: '100', designation: 'MANAGER-SALES', jointWorking: 'YES', jointWorkingName: 'Executive A', jointWorkingDesignation: 'EXECUTIVE-SALES', type: 'OTHER' },
   ];
-  const prepared = prepareJointWorkingRows(source);
-  const result = calculateJointWorkingKpis(prepared, '2026-10');
-  assert.equal(result.values.q1.week1, 2, 'same manager and date is one, separate Emp IDs count separately');
-  assert.equal(result.values.q2.week1, 3, 'all eligible Dealer/Other source rows count');
-  assert.equal(result.values.q3.week1, 1, 'same normalized distributor is counted once across different Seniors');
-  assert.equal(result.details.excludedZonalManagerSourceRows.length, 1);
-  assert.equal(result.details.invalidDateRows.length, 1, 'a Check-In timestamp/dateKey cannot substitute for a blank Date');
-  assert.equal(result.details.q1SourceRows[0].sourceRow, 2);
-  assert.equal(result.details.q3UniquenessScope.includes('Global'), true);
-  assert.equal(result.details.q3UniqueByBucket.week1[0].rawRows, 2);
+  const result = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10');
+  assert.equal(result.values.q1.week1, 1);
+  assert.equal(result.values.q1.week2, 1);
+  assert.equal(result.values.q1.firstHalf, 2);
+  assert.equal(result.values.q2.week1, 2);
+  assert.equal(result.values.q2.week2, 1);
+  assert.equal(result.values.q2.firstHalf, 3);
+  const exportRows = getJointWorkingKpiExportRows(result, 'October 2026');
+  assert.equal(exportRows[1][4], 2);
+  assert.equal(exportRows[2][4], 3);
 });
