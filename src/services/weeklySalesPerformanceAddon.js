@@ -49,6 +49,7 @@ function newWeekSets() {
 
 export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
   const ssp = newWeekSets();
+  const uniqueSspForMonth = new Set();
   const jointDays = newWeekSets();
   const orderCountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   const orderRowsByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
@@ -57,7 +58,10 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
     if (!bucket || !allowedSenior.has(normalize(row.designation)) || excludedZonal.has(normalize(row.zonalManager))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
-    if (identity) ssp[bucket].add(identity);
+    if (identity) {
+      ssp[bucket].add(identity);
+      uniqueSspForMonth.add(identity);
+    }
   }
   for (const row of q1Q3Result?.details?.q1SourceRows || []) {
     if (!row.eligible) continue;
@@ -75,6 +79,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const orderAmount = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, basicAmountByWeek[key]]));
   const actualByRow = {
     ssp: Object.fromEntries(Object.keys(ssp).map((key) => [key, ssp[key].size])),
+    sspMonthUnique: prepared.rowsByMonth?.has(month) ? uniqueSspForMonth.size : null,
     jointDays: Object.fromEntries(Object.keys(jointDays).map((key) => [key, jointDays[key].size])),
     retailersVisited: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, managerKpiResult?.values?.q2?.[key] ?? (prepared.rowsByMonth?.has(month) ? 0 : null)])),
     orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderRowsByWeek[key] ? orderCountByWeek[key] : (prepared.rowsByMonth?.has(month) ? 0 : null)])),
@@ -138,7 +143,7 @@ export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMon
     return addon.actualByRow[row.key][weekKey];
   };
   return [
-    ['KPI', ...addon.weeks.flatMap((week) => [`${week.label} PLAN`, `${week.label} ACTUAL`])],
-    ...addon.rows.map((row) => [row.label, ...addon.weeks.flatMap((week) => [Number(planOverridesForMonth[row.key]?.[week.key] ?? row.plan), actualFor(row, week.key)])]),
+    ['KPI', ...addon.weeks.flatMap((week) => [`${week.label} PLAN`, `${week.label} ACTUAL`]), 'MONTH UNIQUE SSP ACTUAL'],
+    ...addon.rows.map((row) => [row.label, ...addon.weeks.flatMap((week) => [Number(planOverridesForMonth[row.key]?.[week.key] ?? row.plan), actualFor(row, week.key)]), row.key === 'ssp' ? addon.actualByRow.sspMonthUnique ?? 'Pending' : '']),
   ];
 }
