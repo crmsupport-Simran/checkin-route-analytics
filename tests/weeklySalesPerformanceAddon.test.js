@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../src/services/q1Q3ReportsService.js';
-import { buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, isValidManualActual, readManualActuals, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
+import { buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
 
 const row = (date, extra = {}) => ({
   date, salesUserName: 'Senior A', empId: '100', designation: 'MANAGER-SALES',
@@ -40,6 +40,23 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   assert.equal(exported[5][2], 'PENDING · Upload secondary sales report');
   assert.equal(exported[6][4], 10000);
   assert.equal(exported[7][2], 'SOURCE DATA REQUIRED');
+  const plans = { ssp: { week1: 60 }, jointDays: { week3: 180 } };
+  const exportWithEditedPlans = buildWeeklySalesPerformanceExportRows(addon, {}, plans);
+  assert.equal(exportWithEditedPlans[1][1], 60);
+  assert.equal(exportWithEditedPlans[2][5], 180);
+});
+
+test('plan edits validate nonnegative numeric targets and load month-specific saved plans', () => {
+  assert.equal(isValidPlanValue('0'), true);
+  assert.equal(isValidPlanValue('123.5'), true);
+  assert.equal(isValidPlanValue(''), false);
+  assert.equal(isValidPlanValue('-1'), false);
+  assert.equal(isValidPlanValue('abc'), false);
+  const saved = '{"2026-10":{"ssp":{"week1":60}}}';
+  const storage = { getItem: (key) => key === WEEKLY_SALES_PLAN_STORAGE_KEY ? saved : null };
+  assert.deepEqual(readWeeklySalesPlanOverrides(storage), { '2026-10': { ssp: { week1: 60 } } });
+  assert.deepEqual(readWeeklySalesPlanOverrides({ getItem: () => '{bad' }), {});
+  assert.equal(WEEKLY_SALES_PERFORMANCE_STORAGE_KEY.length > 0, true);
 });
 
 test('manual actuals accept only blank or finite nonnegative values and persist safely', () => {

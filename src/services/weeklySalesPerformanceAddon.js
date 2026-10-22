@@ -12,6 +12,7 @@ export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
 ]);
 
 export const WEEKLY_SALES_PERFORMANCE_STORAGE_KEY = 'weekly-sales-performance-manual-actuals-v1';
+export const WEEKLY_SALES_PLAN_STORAGE_KEY = 'weekly-sales-performance-plan-overrides-v1';
 export const WEEKLY_SALES_PERFORMANCE_WEEKS = Object.freeze([
   { key: 'week1', label: 'WEEK-1 (1–8)' },
   { key: 'week2', label: 'WEEK-2 (9–16)' },
@@ -99,6 +100,21 @@ export function readManualActuals(storage) {
   }
 }
 
+export function readWeeklySalesPlanOverrides(storage) {
+  try {
+    const target = storage ?? globalThis.localStorage;
+    if (!target) return {};
+    const parsed = JSON.parse(target.getItem(WEEKLY_SALES_PLAN_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function isValidPlanValue(value) {
+  return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value)) && Number(value) >= 0;
+}
+
 export function isValidManualActual(value) {
   if (value === '' || value === null || value === undefined) return true;
   const number = Number(value);
@@ -111,7 +127,7 @@ export function displayManualActual(value) {
   return Number(value);
 }
 
-export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMonth = {}) {
+export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMonth = {}, planOverridesForMonth = {}) {
   if (!addon) return [];
   const actualFor = (row, weekKey) => {
     if (row.key === 'averageOrderValue') return displayManualActual(manualActualsForMonth[row.key]?.[weekKey]);
@@ -121,6 +137,6 @@ export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMon
   };
   return [
     ['KPI', ...addon.weeks.flatMap((week) => [`${week.label} PLAN`, `${week.label} ACTUAL`])],
-    ...addon.rows.map((row) => [row.label, ...addon.weeks.flatMap((week) => [row.plan, actualFor(row, week.key)])]),
+    ...addon.rows.map((row) => [row.label, ...addon.weeks.flatMap((week) => [Number(planOverridesForMonth[row.key]?.[week.key] ?? row.plan), actualFor(row, week.key)])]),
   ];
 }
