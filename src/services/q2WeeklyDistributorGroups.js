@@ -97,6 +97,7 @@ export function calculateQ2WeeklyDistributorGroups(records = [], month, headers 
   const bucketData = Object.fromEntries(buckets.map(({ key }) => [key, {
     rawRows: 0, filteredRows: 0, blankIdentifierRows: 0, missingSeniorRows: 0,
     groups: new Map(), sourceRows: [], typeBreakdown: new Map(), designationBreakdown: new Map(),
+    groupsThroughDay14: new Set(), groupsOnDay15: new Set(),
   }]));
   const invalidDateRows = [];
   let selectedMonthRows = 0;
@@ -153,6 +154,8 @@ export function calculateQ2WeeklyDistributorGroups(records = [], month, headers 
         stats.groups.set(groupKey, group);
       }
       group.sourceRows.push(row.sourceRow);
+      if (row.day <= 14) stats.groupsThroughDay14.add(groupKey);
+      if (row.day === 15) stats.groupsOnDay15.add(groupKey);
       stats.typeBreakdown.set(row.typeLabel || '(blank)', (stats.typeBreakdown.get(row.typeLabel || '(blank)') || 0) + 1);
       const designationKey = row.designationLabel || '(blank)';
       stats.designationBreakdown.set(designationKey, (stats.designationBreakdown.get(designationKey) || 0) + 1);
@@ -179,6 +182,10 @@ export function calculateQ2WeeklyDistributorGroups(records = [], month, headers 
     });
     const duplicateExamples = groups.filter((group) => group.rowCount > 1).slice(0, 20);
     const uniqueCount = groups.length;
+    const referenceBoundaryUniqueGroups = bucket.key === 'week2' ? stats.groupsThroughDay14.size : null;
+    const uniqueGroupsAddedOnDay15 = bucket.key === 'week2'
+      ? [...stats.groupsOnDay15].filter((groupKey) => !stats.groupsThroughDay14.has(groupKey)).length
+      : null;
     const expected = month === Q2_WEEKLY_DISTRIBUTOR_RULES.referenceMonth ? Q2_WEEKLY_DISTRIBUTOR_RULES.expectedByBucket[bucket.key] : null;
     const actual = sourceMissingColumns.length ? null : uniqueCount;
     const difference = expected == null || actual == null ? null : actual - expected;
@@ -189,6 +196,7 @@ export function calculateQ2WeeklyDistributorGroups(records = [], month, headers 
       blankOrInvalidIdentifierRows: stats.blankIdentifierRows, missingSeniorRows: stats.missingSeniorRows,
       duplicateRowsRemoved: Math.max(0, stats.filteredRows - stats.blankIdentifierRows - uniqueCount),
       uniqueDistributorGroups: uniqueCount, duplicateExamples,
+      referenceBoundaryUniqueGroups, uniqueGroupsAddedOnDay15,
       typeBreakdown: [...stats.typeBreakdown].map(([type, rows]) => ({ type, rows })).sort((a, b) => a.type.localeCompare(b.type)),
       designationBreakdown: [...stats.designationBreakdown].map(([designation, rows]) => ({ designation, rows })).sort((a, b) => a.designation.localeCompare(b.designation)),
     };
@@ -205,11 +213,11 @@ export function calculateQ2WeeklyDistributorGroups(records = [], month, headers 
 export function getQ2WeeklyDistributorSummaryRows(result, monthLabel) {
   if (!result) return [];
   return [
-    ['Month', 'WEEKLY SOURCE', 'EXPECTED UNIQUE DISTRIBUTOR GROUPS', 'ACTUAL UNIQUE DISTRIBUTOR GROUPS', 'DIFFERENCE', 'STATUS', 'RAW SOURCE ROWS', 'ELIGIBLE ROWS', 'BLANK / INVALID IDENTIFIERS', 'DUPLICATE ROWS REMOVED'],
+    ['Month', 'WEEKLY SOURCE', 'EXPECTED UNIQUE DISTRIBUTOR GROUPS', 'ACTUAL UNIQUE DISTRIBUTOR GROUPS', 'DIFFERENCE', 'STATUS', 'RAW SOURCE ROWS', 'ELIGIBLE ROWS', 'BLANK / INVALID IDENTIFIERS', 'DUPLICATE ROWS REMOVED', 'WEEK-2 UNIQUE GROUPS THROUGH DAY 14', 'WEEK-2 NEW GROUPS ON DAY 15'],
     ...result.buckets.map(({ key }) => {
       const row = result.summaries[key];
-      return [monthLabel, row.bucket, row.expected ?? 'Pending', row.actual ?? 'N/A', row.difference ?? 'N/A', row.status, row.rawSourceRowCount, row.rowsAfterEligibilityFilters, row.blankOrInvalidIdentifierRows, row.duplicateRowsRemoved];
+      return [monthLabel, row.bucket, row.expected ?? 'Pending', row.actual ?? 'N/A', row.difference ?? 'N/A', row.status, row.rawSourceRowCount, row.rowsAfterEligibilityFilters, row.blankOrInvalidIdentifierRows, row.duplicateRowsRemoved, row.referenceBoundaryUniqueGroups ?? 'N/A', row.uniqueGroupsAddedOnDay15 ?? 'N/A'];
     }),
-    [monthLabel, 'CONFIRMED EXPECTED SUBTOTAL (WEEK-1 + WEEK-2)', result.confirmedExpectedSubtotal, '', '', 'REFERENCE ONLY', '', '', '', ''],
+    [monthLabel, 'CONFIRMED EXPECTED SUBTOTAL (WEEK-1 + WEEK-2)', result.confirmedExpectedSubtotal, '', '', 'REFERENCE ONLY', '', '', '', '', '', ''],
   ];
 }

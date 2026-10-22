@@ -72,6 +72,18 @@ test('October expected-reference statuses and confirmed subtotal are configured,
   assert.equal(exportRows.at(-1)[2], 411);
 });
 
+test('preserves Oct 15 in WEEK-2 and explains a reference mismatch caused by the older 8–14 boundary', () => {
+  const records = [];
+  for (let index = 0; index < 232; index++) records.push(row({ sourceIndex: records.length, date: '08/10/2026', salesUserName: `Through 14 ${index}`, empId: `A-${index}`, companyName: `Partner ${index}` }));
+  for (let index = 0; index < 35; index++) records.push(row({ sourceIndex: records.length, date: '15/10/2026', salesUserName: `Day 15 ${index}`, empId: `B-${index}`, companyName: `New Partner ${index}` }));
+  const week2 = calculate(records).summaries.week2;
+  assert.equal(week2.referenceBoundaryUniqueGroups, 232);
+  assert.equal(week2.uniqueGroupsAddedOnDay15, 35);
+  assert.equal(week2.actual, 267);
+  assert.equal(week2.difference, 35);
+  assert.equal(week2.status, 'MISMATCH');
+});
+
 test('reports missing Q2 source columns instead of presenting a false zero', () => {
   const result = calculate([row()], '2026-10', ['Date', 'Sales User Name', 'Emp ID']);
   assert.deepEqual(result.sourceMissingColumns, ['Designation', 'Type', 'Zonal Manager', 'Dealer Channel Partner Code / Dealer Channel Partner / Company Name']);
