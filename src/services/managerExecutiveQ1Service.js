@@ -73,6 +73,12 @@ export function prepareManagerExecutiveQ1Rows(records = []) {
       jointWorkingDesignation: String(record.jointWorkingDesignation ?? '').trim().replace(/\s+/g, ' '),
       zonalManager: String(record.zonalManager ?? '').trim().replace(/\s+/g, ' '),
       zonalManagerKey: normalize(record.zonalManager), type: String(record.type ?? '').trim().replace(/\s+/g, ' '),
+      typeKey: normalize(record.type),
+      distributorCode: String(record.dealerChannelPartnerCode ?? '').trim().replace(/\s+/g, ' '),
+      distributorName: String(record.dealerChannelPartner ?? '').trim().replace(/\s+/g, ' '),
+      companyName: String(record.companyName ?? '').trim().replace(/\s+/g, ' '),
+      distributorKey: normalize(record.dealerChannelPartnerCode) || normalize(record.dealerChannelPartner) || normalize(record.companyName),
+      distributorLabel: String(record.dealerChannelPartnerCode || record.dealerChannelPartner || record.companyName || '').trim().replace(/\s+/g, ' '),
     };
     if (!rowsByMonth.has(month)) rowsByMonth.set(month, []);
     rowsByMonth.get(month).push(row);
@@ -85,6 +91,8 @@ export function calculateManagerExecutiveQ1(prepared, month) {
   const values = Object.fromEntries(buckets.map(({ key }) => [key, 0]));
   const managerDates = Object.fromEntries(buckets.map(({ key }) => [key, new Map()]));
   const sourceRowsByBucket = Object.fromEntries(buckets.map(({ key }) => [key, []]));
+  const q2Distributors = Object.fromEntries(buckets.map(({ key }) => [key, new Map()]));
+  const q2SourceRowsByBucket = Object.fromEntries(buckets.map(({ key }) => [key, []]));
   const excludedZonalRows = [];
   const monthRows = prepared.rowsByMonth.get(month) || [];
 
@@ -97,6 +105,7 @@ export function calculateManagerExecutiveQ1(prepared, month) {
     const executiveEligible = matchedExecutiveDesignations.length > 0;
     const managerIdentityAvailable = Boolean(row.empId || normalize(row.employee));
     const zonalExcluded = excludedZonalManagers.has(row.zonalManagerKey);
+    const q2Eligible = managerEligible && managerIdentityAvailable && row.typeKey === 'CHANNEL PARTNER' && Boolean(row.distributorKey) && !zonalExcluded;
     const reasons = [];
     if (!managerEligible) reasons.push('Sales User Designation is not an approved Manager designation');
     if (!jointEligible) reasons.push('Joint Working is not YES');
@@ -118,6 +127,16 @@ export function calculateManagerExecutiveQ1(prepared, month) {
     const bucket = buckets.find(({ from, to }) => row.day >= from && row.day <= to);
     if (!bucket) continue;
     sourceRowsByBucket[bucket.key].push({ ...base, bucket: bucket.label, uniqueContribution: false });
+    if (managerEligible && row.typeKey === 'CHANNEL PARTNER' && !row.distributorKey) {
+      q2SourceRowsByBucket[bucket.key].push({ bucket: bucket.label, sourceRow: row.sourceRow, date: row.date, employee: row.employee, empId: row.empId, designation: row.designationLabel || '(blank)', type: row.type || '(blank)', distributor: '(blank)', identifierSource: 'None', eligible: false, uniqueContribution: false, reason: 'Channel Partner identifier is blank' });
+    } else if (managerEligible && row.typeKey === 'CHANNEL PARTNER') {
+      const q2Base = { bucket: bucket.label, sourceRow: row.sourceRow, date: row.date, employee: row.employee, empId: row.empId, designation: row.designationLabel || '(blank)', type: row.type || '(blank)', distributor: row.distributorLabel, distributorKey: row.distributorKey, identifierSource: row.distributorCode ? 'Dealer Channel Partner Code' : row.distributorName ? 'Dealer Channel Partner' : 'Company Name', eligible: q2Eligible, uniqueContribution: false, reason: q2Eligible ? 'Included pending unique bucket comparison' : 'Excluded by Zonal Manager rule' };
+      q2SourceRowsByBucket[bucket.key].push(q2Base);
+      if (q2Eligible) {
+        if (!q2Distributors[bucket.key].has(row.distributorKey)) q2Distributors[bucket.key].set(row.distributorKey, { distributor: row.distributorLabel, identifier: row.distributorKey, identifierSource: q2Base.identifierSource, manager: row.employee, empId: row.empId, sourceRows: [] });
+        q2Distributors[bucket.key].get(row.distributorKey).sourceRows.push(row.sourceRow);
+      }
+    }
     if (!eligible) continue;
     const managerMap = managerDates[bucket.key];
     let manager = managerMap.get(row.managerKey);
@@ -152,16 +171,32 @@ export function calculateManagerExecutiveQ1(prepared, month) {
       return { ...row, uniqueContribution };
     });
   }
+  const q2UniqueByBucket = Object.fromEntries(buckets.map(({ key, label }) => [key,
+    [...q2Distributors[key]].map(([identifier, entry]) => ({ ...entry, sourceRows: entry.sourceRows.join(', '), bucket: label })).sort((a, b) => a.distributor.localeCompare(b.distributor)),
+  ]));
+  const q2Values = Object.fromEntries(buckets.map(({ key }) => [key, q2Distributors[key].size]));
+  for (const bucket of buckets) {
+    const unique = new Set();
+    q2SourceRowsByBucket[bucket.key] = q2SourceRowsByBucket[bucket.key].map((entry) => {
+      if (!entry.eligible) return entry;
+      const uniqueContribution = !unique.has(entry.distributorKey);
+      unique.add(entry.distributorKey);
+      return { ...entry, uniqueContribution, reason: uniqueContribution ? 'Counted once: unique Channel Partner in this week' : 'Duplicate identifier already counted in this week' };
+    });
+  }
   return {
-    month, buckets, values,
+    month, buckets, values, q2Values,
     total: Object.values(values).reduce((sum, count) => sum + count, 0),
     details: { totalMonthRows: monthRows.length, qualifyingSourceRows: Object.values(sourceRowsByBucket).flat().filter((row) => row.eligible).length,
-      managerSummariesByBucket, sourceRowsByBucket: q1AuditByBucket, excludedZonalRows, invalidDateRows: prepared.invalidDateRows },
+      managerSummariesByBucket, sourceRowsByBucket: q1AuditByBucket, excludedZonalRows, invalidDateRows: prepared.invalidDateRows,
+      q2UniqueByBucket, q2SourceRowsByBucket, q2QualifyingRows: Object.values(q2SourceRowsByBucket).flat().filter((row) => row.eligible).length,
+      q2UniquenessScope: 'Unique globally across eligible Managers within each bucket; the same Channel Partner is counted once per week.' },
   };
 }
 
 export function getManagerExecutiveQ1ExportRows(result, monthLabel) {
   if (!result) return [];
   return [['Month', 'KPI', ...result.buckets.map(({ label }) => label), 'Total'],
-    [monthLabel, 'Q1 · Manager unique joint-working visit-days with Executive/BDO', ...result.buckets.map(({ key }) => result.values[key]), result.total]];
+    [monthLabel, 'Q1 · Manager unique joint-working visit-days with Executive/BDO', ...result.buckets.map(({ key }) => result.values[key]), result.total],
+    [monthLabel, 'Q2 · Unique Channel Partners visited by Managers', ...result.buckets.map(({ key }) => result.q2Values[key]), Object.values(result.q2Values).reduce((sum, count) => sum + count, 0)]];
 }

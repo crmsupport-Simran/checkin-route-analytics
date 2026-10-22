@@ -75,8 +75,27 @@ test('Q1 export uses the same four weekly results and total as the dashboard', (
     row({ date: '07/10/2026' }), row({ sourceIndex: 1, date: '08/10/2026', empId: 'M-2', salesUserName: 'Manager B' }),
     row({ sourceIndex: 2, date: '16/10/2026', empId: 'M-3', salesUserName: 'Manager C' }),
   ]);
-  const exported = getManagerExecutiveQ1ExportRows(result, 'October 2026')[1];
+  const exportRows = getManagerExecutiveQ1ExportRows(result, 'October 2026');
+  const exported = exportRows[1];
   assert.deepEqual(exported.slice(2, 6), [result.values.week1, result.values.week2, result.values.week3, result.values.week4]);
   assert.equal(exported[6], result.total);
+  assert.equal(exportRows[2][1], 'Q2 · Unique Channel Partners visited by Managers');
+});
+
+test('Q2 counts normalized unique Channel Partners per week using identifier priority without requiring Joint Working', () => {
+  const result = calculate([
+    row({ sourceIndex: 0, type: 'CHANNEL PARTNER', dealerChannelPartnerCode: ' CP-01 ', jointWorking: 'NO', jointWorkingName: '' }),
+    row({ sourceIndex: 1, type: ' channel partner ', dealerChannelPartnerCode: 'cp-01', jointWorking: 'NO', jointWorkingName: '' }),
+    row({ sourceIndex: 2, date: '08/10/2026', type: 'CHANNEL PARTNER', dealerChannelPartnerCode: 'CP-01', dealerChannelPartner: 'Different name', jointWorking: 'NO', jointWorkingName: '' }),
+    row({ sourceIndex: 3, type: 'CHANNEL PARTNER', dealerChannelPartner: 'Partner Two', jointWorking: 'NO', jointWorkingName: '' }),
+    row({ sourceIndex: 4, type: 'CHANNEL PARTNER', companyName: 'Partner Three', jointWorking: 'NO', jointWorkingName: '' }),
+    row({ sourceIndex: 5, type: 'CHANNEL PARTNER', companyName: 'Zonal excluded', zonalManager: 'ARCHIT GARG', jointWorking: 'NO', jointWorkingName: '' }),
+    row({ sourceIndex: 6, type: 'DEALER', dealerChannelPartnerCode: 'Not a channel partner' }),
+  ]);
+  assert.deepEqual([result.q2Values.week1, result.q2Values.week2, result.q2Values.week3, result.q2Values.week4], [3, 1, 0, 0]);
+  assert.equal(result.details.q2UniqueByBucket.week1.length, 3);
+  const q2Audit = result.details.q2SourceRowsByBucket.week1;
+  assert.equal(q2Audit.filter((entry) => entry.uniqueContribution).length, 3);
+  assert.equal(result.details.q2SourceRowsByBucket.week2.find((entry) => entry.sourceRow === 4)?.identifierSource, 'Dealer Channel Partner Code');
 });
 
