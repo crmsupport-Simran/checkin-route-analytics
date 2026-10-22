@@ -7,6 +7,7 @@ import TourPlan from './components/TourPlan';
 import JointWorkingKpi from './components/JointWorkingKpi';
 import EmployeeTourPlanReport from './components/EmployeeTourPlanReport';
 import Q1Q3ReportsDashboard from './components/Q1Q3ReportsDashboard';
+import ManagerExecutiveQ1Dashboard from './components/ManagerExecutiveQ1Dashboard';
 import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
 
@@ -113,6 +114,7 @@ export default function App() {
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
         <button className={view === 'q1-q3-reports' ? 'active' : ''} onClick={() => setView('q1-q3-reports')}>Q1–Q3 Reports</button>
+        <button className={view === 'manager-executive-q1' ? 'active' : ''} onClick={() => setView('manager-executive-q1')}>Manager + Executive Q1</button>
         <button className={view === 'employee-tour' ? 'active' : ''} onClick={() => setView('employee-tour')}>Employee Tour Plan</button>
         <label className="appearance-control">Appearance
           <select aria-label="Appearance" value={appearance} onChange={(event) => setAppearance(event.target.value)}>
@@ -131,6 +133,7 @@ export default function App() {
       {view === 'tour' && <TourPlan dealers={dealers} report={report} attendance={attendance}/>}
       {view === 'joint-working' && <JointWorkingKpi report={report}/>}
       {view === 'q1-q3-reports' && <Q1Q3ReportsDashboard report={report}/>}
+      {view === 'manager-executive-q1' && <ManagerExecutiveQ1Dashboard report={report}/>}
       {view === 'employee-tour' && <EmployeeTourPlanReport report={report} attendance={attendance} dealers={dealers}/>}
       {report && view === 'dashboard' && <>
         <FilterPanel indexes={report.indexes} filters={filters} setFilters={setFilters} clear={() => setFilters(emptyFilters)}/>
