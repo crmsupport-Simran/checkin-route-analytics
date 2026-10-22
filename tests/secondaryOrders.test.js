@@ -37,6 +37,14 @@ test('Q.5 reads Basic order value from Excel column V and ignores Total Amount',
   assert.equal(parsed.records[0].basicAmount, 321.5);
 });
 
+test('secondary-order weekly date uses Date Created and ignores its time component', () => {
+  const parsed = parseSecondaryOrdersBuffer(workbookBuffer([
+    { 'Order No': 'SO-1', 'Date Created': '01-10-2026 09:57:29', 'Basic order value': 125 },
+    { 'Order No': 'SO-2', 'Date Created': '08-10-2026 10:00:19', 'Basic order value': 250 },
+  ]));
+  assert.deepEqual(parsed.records.map((row) => row.dateKey), ['2026-10-01', '2026-10-08']);
+});
+
 test('Q.4 counts unique order IDs and Q.5 sums only Basic Amount by weekly bucket and exports the same actuals', () => {
   const sourceRows = [{ date: '01/10/2026', salesUserName: 'Senior', empId: '1', designation: 'MANAGER-SALES' }];
   const prepared = prepareQ1Q3ReportRows(sourceRows);
