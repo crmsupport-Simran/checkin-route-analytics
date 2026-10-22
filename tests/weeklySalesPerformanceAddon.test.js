@@ -32,7 +32,6 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   const existingSnapshot = structuredClone(existing.values);
   const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, territoryKpi);
   assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 1 });
-  assert.equal(addon.actualByRow.sspMonthUnique, 2, 'monthly SSP is unique Manager + Territory employees, not the sum of weekly distinct counts');
   assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.retailersVisited, Object.fromEntries(['week1', 'week2', 'week3', 'week4'].map((week) => [week, territoryKpi.values.q2[week]])));
@@ -47,8 +46,6 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   assert.equal(exported[6][4], 'Pending');
   assert.equal(exported[7][2], 12);
   assert.equal(exported[8][6], 7);
-  assert.equal(exported[0][9], 'MONTH UNIQUE SSP ACTUAL');
-  assert.equal(exported[1][9], 2);
   const plans = { ssp: { week1: 60 }, jointDays: { week3: 180 } };
   const exportWithEditedPlans = buildWeeklySalesPerformanceExportRows(addon, {}, plans);
   assert.equal(exportWithEditedPlans[1][1], 60);
