@@ -69,6 +69,6 @@ test('Check-In sourced Q.4/Q.5 stay pending when there is no Check-In month data
   ] });
   assert.equal(result.actualByRow.orders.week1, null);
   assert.equal(result.actualByRow.orderAmount.week1, null);
-  assert.equal(buildWeeklySalesPerformanceExportRows(result)[4][2], 'Check-In · Joint Working YES + Secondary order count');
+  assert.equal(buildWeeklySalesPerformanceExportRows(result)[4][2], 'Unique Check-In Type ID · Joint Working YES + Secondary sales type + positive Secondary Order Count (or Basic Order Value when count is absent)');
   assert.equal(buildWeeklySalesPerformanceExportRows(result)[5][2], 'Check-In · Joint Working YES + Secondary Basic Order Value');
 });

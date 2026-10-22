@@ -52,28 +52,30 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   assert.equal(exportWithEditedPlans[2][5], 180);
 });
 
-test('Q4/Q5 use Check-In rows with Joint Working YES and Secondary sales type; Q2 supplies retailer visits', () => {
+test('Q4 counts unique retailer Type IDs with a positive secondary order count; Q5 amount remains source-summed', () => {
   const records = [
-    row('01/10/2026', { sourceIndex: 0, designationSalesType: 'SECONDARY', secondaryOrderCount: 2, basicOrderValue: 1250 }),
-    row('08/10/2026', { sourceIndex: 1, designationSalesType: 'SECONDARY', secondaryOrderCount: '3', basicOrderValue: '2,400' }),
-    row('09/10/2026', { sourceIndex: 2, designationSalesType: 'SECONDARY', secondaryOrderCount: 99, basicOrderValue: 9999, jointWorking: 'NO' }),
-    row('10/10/2026', { sourceIndex: 3, designationSalesType: 'PRIMARY', secondaryOrderCount: 8, basicOrderValue: 8000 }),
-    row('11/10/2026', { sourceIndex: 4, designationSalesType: 'SECONDARY ORDER COUNT', basicOrderValue: 150 }),
+    row('01/10/2026', { sourceIndex: 0, typeId: 'R-1', designationSalesType: 'SECONDARY', secondaryOrderCount: 2, basicOrderValue: 1250 }),
+    row('02/10/2026', { sourceIndex: 1, typeId: 'r-1', designationSalesType: 'SECONDARY', basicOrderValue: 100 }),
+    row('08/10/2026', { sourceIndex: 2, typeId: 'R-2', designationSalesType: 'SECONDARY', secondaryOrderCount: '3', basicOrderValue: '2,400' }),
+    row('09/10/2026', { sourceIndex: 3, typeId: 'R-4', designationSalesType: 'SECONDARY', secondaryOrderCount: 99, basicOrderValue: 9999, jointWorking: 'NO' }),
+    row('10/10/2026', { sourceIndex: 4, typeId: 'R-5', designationSalesType: 'PRIMARY', secondaryOrderCount: 8, basicOrderValue: 8000 }),
+    row('11/10/2026', { sourceIndex: 5, typeId: 'R-3', designationSalesType: 'SECONDARY ORDER COUNT', secondaryOrderCount: 1, basicOrderValue: 150 }),
+    row('12/10/2026', { sourceIndex: 6, typeId: 'R-6', designationSalesType: 'SECONDARY', secondaryOrderCount: 0, basicOrderValue: 0 }),
   ];
   const prepared = prepareQ1Q3ReportRows(records);
   const q1Q3 = calculateQ1Q3Reports(prepared, '2026-10');
   const territoryKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10', { includeTerritory: true });
   const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3, null, territoryKpi);
 
-  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.orders, { week1: 2, week2: 4, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.orderAmount, { week1: 1250, week2: 2550, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.averageOrderValue, { week1: 625, week2: 637.5, week3: null, week4: null });
+  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 2, week2: 4, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.orders, { week1: 1, week2: 2, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.orderAmount, { week1: 1350, week2: 2550, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.averageOrderValue, { week1: 1350, week2: 1275, week3: null, week4: null });
   const exportRows = buildWeeklySalesPerformanceExportRows(addon, { retainedRetailers: { week1: '12' }, newRetailers: { week2: '7' } });
-  assert.equal(exportRows[3][2], 1, 'Q2 visit count feeds the table actual');
-  assert.equal(exportRows[4][2], 2, 'Q4 uses the Check-In Secondary Order Count');
+  assert.equal(exportRows[3][2], 2, 'Q2 visit count feeds the table actual');
+  assert.equal(exportRows[4][2], 1, 'Q4 counts the repeated retailer Type ID once');
   assert.equal(exportRows[5][4], 2550, 'Q5 sums only qualifying Check-In Basic Order Value');
-  assert.equal(exportRows[6][4], 637.5, 'Average Order Value is calculated from Q5 / Q4');
+  assert.equal(exportRows[6][4], 1275, 'Average Order Value is calculated from Q5 / unique retailer IDs');
   assert.equal(exportRows[7][2], 12);
   assert.equal(exportRows[8][4], 7);
 });

@@ -104,4 +104,9 @@ test('territory-inclusive copy adds Territory roles while the original KPI remai
   assert.equal(managersAndTerritory.values.q1.week1, 2);
   assert.equal(managersAndTerritory.values.q2.week1, 2);
   assert.equal(managersAndTerritory.values.q3.week1, 2);
+  for (const question of ['q1', 'q2', 'q3']) {
+    for (const bucket of Object.keys(managersOnly.values[question])) {
+      assert.ok(managersAndTerritory.values[question][bucket] >= managersOnly.values[question][bucket], `${question} ${bucket} must not drop when Territory roles are added`);
+    }
+  }
 });

@@ -4,7 +4,7 @@ export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
   { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Distinct eligible Senior Sales Users with Check-In rows' },
   { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager + Territory Joint Working KPI' },
-  { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Secondary Order Count' },
+  { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Unique retailer Type ID · Joint Working YES + Secondary sales type + positive order evidence' },
   { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Basic Order Value' },
   { key: 'averageOrderValue', label: 'AVERAGE ORDER VALUE', plan: 10000, actualSource: 'Calculated · Total Order Amount ÷ No. of Orders Received' },
   { key: 'retainedRetailers', label: 'OLD RETAILER RETAINED', plan: 55, actualSource: 'Manual actual' },
@@ -50,8 +50,7 @@ function newWeekSets() {
 export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
   const ssp = newWeekSets();
   const jointDays = newWeekSets();
-  const orderCountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
-  const orderRowsByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
+  const orderRetailersByWeek = newWeekSets();
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
@@ -68,8 +67,14 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     if (row.jointWorking !== 'YES' || !isSecondarySalesType(row.designationSalesType)) continue;
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
     if (!bucket) continue;
-    orderRowsByWeek[bucket] += 1;
-    orderCountByWeek[bucket] += parseAmount(row.secondaryOrderCount) ?? 1;
+    const explicitOrderCount = parseAmount(row.secondaryOrderCount);
+    // Some Check-In exports omit Secondary Order Count altogether. In those
+    // files a positive Basic Order Value is the available evidence of an order.
+    const hasSecondaryOrder = explicitOrderCount === null
+      ? (parseAmount(row.basicOrderValue) ?? 0) > 0
+      : explicitOrderCount > 0;
+    const retailerId = normalize(row.typeId);
+    if (hasSecondaryOrder && retailerId) orderRetailersByWeek[bucket].add(retailerId);
     basicAmountByWeek[bucket] += parseAmount(row.basicOrderValue) ?? 0;
   }
   const orderAmount = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, basicAmountByWeek[key]]));
@@ -77,15 +82,15 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     ssp: Object.fromEntries(Object.keys(ssp).map((key) => [key, ssp[key].size])),
     jointDays: Object.fromEntries(Object.keys(jointDays).map((key) => [key, jointDays[key].size])),
     retailersVisited: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, managerKpiResult?.values?.q2?.[key] ?? (prepared.rowsByMonth?.has(month) ? 0 : null)])),
-    orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderRowsByWeek[key] ? orderCountByWeek[key] : (prepared.rowsByMonth?.has(month) ? 0 : null)])),
+    orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderRetailersByWeek[key].size : null])),
     orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderAmount[key] : null])),
-    averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderCountByWeek[key] > 0 ? basicAmountByWeek[key] / orderCountByWeek[key] : null])),
+    averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderRetailersByWeek[key].size > 0 ? basicAmountByWeek[key] / orderRetailersByWeek[key].size : null])),
     retainedRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
     newRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
   };
   return { month, weeks: WEEKLY_SALES_PERFORMANCE_WEEKS, rows: WEEKLY_SALES_PERFORMANCE_ROWS, actualByRow,
     statuses: {
-      orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'Check-In · Joint Working YES + Secondary order count'])),
+      orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'Unique Check-In Type ID · Joint Working YES + Secondary sales type + positive Secondary Order Count (or Basic Order Value when count is absent)'])),
       orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'Check-In · Joint Working YES + Secondary Basic Order Value'])),
     },
   };

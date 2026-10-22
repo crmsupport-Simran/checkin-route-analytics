@@ -193,3 +193,4 @@
   .appearance-control { flex: 0 0 112px; }
 }
 :root[data-theme="dark"] .joint-kpi-territory-note{color:#b6c6dc}
+:root[data-theme="dark"] .joint-kpi-territory-warning{border-color:#7f3d46;background:#3b2027;color:#ffc4ca}
