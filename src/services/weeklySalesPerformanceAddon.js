@@ -2,7 +2,7 @@ import { Q1_Q3_REPORT_DESIGNATION_RULES } from './q1Q3ReportsService.js';
 
 export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
   { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Unique Manager + Territory employees with Joint Working = YES' },
-  { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
+  { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Unique Manager + Territory employee/date pairs · Joint Working = YES' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager + Territory Joint Working KPI' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Unique retailer Type ID · Joint Working YES + Secondary sales type + positive order evidence' },
   { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Basic Order Value' },
@@ -56,12 +56,10 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
     if (!bucket || row.jointWorking !== 'YES' || !allowedSenior.has(normalize(row.designation))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
-    if (identity) ssp[bucket].add(identity);
-  }
-  for (const row of q1Q3Result?.details?.q1SourceRows || []) {
-    if (!row.eligible) continue;
-    const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
-    if (bucket) jointDays[bucket].add(`${row.managerIdentityKey}|${row.dateKey}`);
+    if (identity) {
+      ssp[bucket].add(identity);
+      jointDays[bucket].add(`${identity}|${row.dateKey}`);
+    }
   }
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     if (row.jointWorking !== 'YES' || !isSecondarySalesType(row.designationSalesType)) continue;

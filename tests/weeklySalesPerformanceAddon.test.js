@@ -16,7 +16,7 @@ test('weekly sales buckets use 1–7, 8–15, 16–23 and 24–month-end, includ
   assert.equal(getWeeklySalesPerformanceBucket('2026-10-01', '2026-09'), null);
 });
 
-test('add-on calculates SSP, eligible joint-working days and qualifying retailer rows without changing existing KPI results', () => {
+test('add-on counts unique Manager + Territory employee-days from Joint Working YES rows without changing existing KPI results', () => {
   const records = [
     row('01/10/2026', { sourceIndex: 0 }),
     row('08/10/2026', { sourceIndex: 1 }),
@@ -32,7 +32,7 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   const existingSnapshot = structuredClone(existing.values);
   const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, territoryKpi);
   assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 2 });
-  assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 2 });
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.retailersVisited, Object.fromEntries(['week1', 'week2', 'week3', 'week4'].map((week) => [week, territoryKpi.values.q2[week]])));
   assert.deepEqual(addon.actualByRow.orders, { week1: 0, week2: 0, week3: 0, week4: 0 });
