@@ -5,7 +5,7 @@ export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
   { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q2 qualifying Dealer + Other source rows' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Secondary Sales Report order count' },
-  { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Secondary Sales Report · Basic Amount only' },
+  { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Secondary Sales Report · Basic order value (column V) only' },
   { key: 'averageOrderValue', label: 'AVERAGE ORDER VALUE', plan: 10000, actualSource: 'Manual actual; not auto-calculated' },
   { key: 'retainedRetailers', label: 'OLD RETAILER RETAINED', plan: 55, actualSource: 'Source data required' },
   { key: 'newRetailers', label: 'NEW RETAILER ADDED', plan: 55, actualSource: 'Source data required' },
@@ -83,7 +83,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   return { month, weeks: WEEKLY_SALES_PERFORMANCE_WEEKS, rows: WEEKLY_SALES_PERFORMANCE_ROWS, actualByRow,
     statuses: {
       orders: secondaryOrders ? Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'Calculated from secondary order rows'])) : Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'PENDING · Upload secondary sales report'])),
-      orderAmount: secondaryOrders ? Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, incompleteAmountWeeks.has(key) ? 'DATA INCOMPLETE · Basic Amount missing' : 'Basic Amount sum'])) : Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'PENDING · Upload secondary sales report'])),
+      orderAmount: secondaryOrders ? Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, incompleteAmountWeeks.has(key) ? 'DATA INCOMPLETE · Basic order value missing' : 'Basic order value sum'])) : Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'PENDING · Upload secondary sales report'])),
     },
   };
 }

@@ -11,6 +11,15 @@ function workbookBuffer(rows) {
   return XLSX.write(book, { type: 'array', bookType: 'xlsx' });
 }
 
+function workbookWithBasicOrderValueInColumnV() {
+  const headers = Array.from({ length: 22 }, (_, index) => `Unused ${index + 1}`);
+  headers[0] = 'Date'; headers[1] = 'Order No'; headers[6] = 'Total Amount'; headers[21] = 'Basic order value';
+  const values = Array(22).fill(''); values[0] = '01/10/2026'; values[1] = 'SO-V'; values[6] = 99999; values[21] = 321.5;
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([headers, values]), 'Secondary Sales Report');
+  return XLSX.write(book, { type: 'array', bookType: 'xlsx' });
+}
+
 test('secondary order upload requires Basic Amount and parses weekly order fields', () => {
   assert.throws(() => parseSecondaryOrdersBuffer(workbookBuffer([{ Date: '01/10/2026', 'Total Amount': 500 }])), /Basic Amount/);
   const parsed = parseSecondaryOrdersBuffer(workbookBuffer([
@@ -21,6 +30,11 @@ test('secondary order upload requires Basic Amount and parses weekly order field
   assert.deepEqual(parsed.records.map((row) => [row.orderId, row.dateKey, row.basicAmount]), [
     ['SO-1', '2026-10-01', 1250.5], ['SO-2', '2026-10-09', 750],
   ]);
+});
+
+test('Q.5 reads Basic order value from Excel column V and ignores Total Amount', () => {
+  const parsed = parseSecondaryOrdersBuffer(workbookWithBasicOrderValueInColumnV());
+  assert.equal(parsed.records[0].basicAmount, 321.5);
 });
 
 test('Q.4 counts unique order IDs and Q.5 sums only Basic Amount by weekly bucket and exports the same actuals', () => {
@@ -47,6 +61,6 @@ test('Q.5 is marked incomplete when a selected-week order has no Basic Amount', 
     { sourceRow: 2, orderId: 'SO-1', dateKey: '2026-10-01', basicAmount: null },
   ] });
   assert.equal(result.actualByRow.orderAmount.week1, null);
-  assert.match(result.statuses.orderAmount.week1, /Basic Amount missing/);
-  assert.equal(buildWeeklySalesPerformanceExportRows(result)[5][2], 'DATA INCOMPLETE · Basic Amount missing');
+  assert.match(result.statuses.orderAmount.week1, /Basic order value missing/);
+  assert.equal(buildWeeklySalesPerformanceExportRows(result)[5][2], 'DATA INCOMPLETE · Basic order value missing');
 });

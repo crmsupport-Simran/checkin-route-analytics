@@ -43,14 +43,14 @@ export function parseSecondaryOrdersBuffer(fileBuffer) {
   const { sheetName, rows, columns } = rowsFromBuffer(fileBuffer, 'Secondary Sales Report');
   if (!rows.length) throw new Error('The secondary order report has no data rows.');
   const hasColumn = (...names) => names.some((name) => columns[normalize(name)]);
-  if (!hasColumn('Basic Amount')) throw new Error('The secondary order report must include a “Basic Amount” column. Q.5 uses this field only.');
+  if (!hasColumn('Basic order value', 'Basic Amount')) throw new Error('The secondary order report must include “Basic order value” (Excel column V) or legacy “Basic Amount”. Q.5 uses this field only.');
   if (!hasColumn('Order Date', 'Date', 'Invoice Date', 'Secondary Order Date')) throw new Error('The secondary order report must include an Order Date or Date column to assign weekly buckets.');
   const records = rows.map((row, index) => {
     const get = headerGetter(row, columns);
     const firstNonblank = (...names) => names.map((name) => get(name)).find((value) => text(value) !== '') ?? '';
     const rawDate = firstNonblank('Order Date', 'Date', 'Invoice Date', 'Secondary Order Date');
     const date = dateValue(rawDate);
-    const rawBasicAmount = get('Basic Amount');
+    const rawBasicAmount = firstNonblank('Basic order value', 'Basic Amount');
     const amountText = String(rawBasicAmount ?? '').replace(/[^0-9.-]/g, '');
     const basicAmount = amountText !== '' && Number.isFinite(Number(amountText)) ? Number(amountText) : null;
     const sourceIndex = index + 2;
