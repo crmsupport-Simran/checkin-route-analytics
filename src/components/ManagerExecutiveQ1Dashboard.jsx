@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { csvValue } from '../utils/formatUtils';
 import { calculateManagerExecutiveQ1, getManagerExecutiveQ1ExportRows, prepareManagerExecutiveQ1Rows } from '../services/managerExecutiveQ1Service';
+import { calculateQ2WeeklyDistributorGroups, getQ2WeeklyDistributorSummaryRows } from '../services/q2WeeklyDistributorGroups';
 
 const monthLabel = (key) => {
   if (!key) return '';
@@ -46,7 +47,8 @@ export default function ManagerExecutiveQ1Dashboard({ report, month }) {
     XLSX.writeFile(book, `manager-joint-working-q1-q2-${selectedMonth}.xlsx`);
   };
 
-  return <section className="card q3-bucket-card manager-executive-q1">
+  return <>
+  <section className="card q3-bucket-card manager-executive-q1">
     <div className="q3-section-title"><div><span className="eyebrow">MANAGER-ONLY KPI · {monthLabel(selectedMonth)}</span><h3>Manager Joint Working Dashboard · Q1 &amp; Q2</h3></div><span>Uses the same month selection as this dashboard.</span></div>
     {!report && <p>Upload a Check-In report to calculate these manager KPIs.</p>}
     {report && !result && <p>No valid visit dates found for the selected Check-In report.</p>}
@@ -69,6 +71,53 @@ export default function ManagerExecutiveQ1Dashboard({ report, month }) {
         <details><summary>Zonal manager exclusion rows ({result.details.excludedZonalRows.length.toLocaleString()})</summary><AuditTable title="Excluded rows" rows={result.details.excludedZonalRows} columns={[{ key: 'sourceRow', label: 'Source Row' }, { key: 'date', label: 'Date' }, { key: 'employee', label: 'Manager' }, { key: 'empId', label: 'Emp ID' }, { key: 'zonalManager', label: 'Zonal Manager' }, { key: 'reason', label: 'Reason' }]} /></details>
         <details><summary>Invalid date rows ({result.details.invalidDateRows.length.toLocaleString()})</summary><AuditTable title="Invalid / blank dates" rows={result.details.invalidDateRows} columns={[{ key: 'sourceRow', label: 'Source Row' }, { key: 'rawDate', label: 'Raw Date' }, { key: 'employee', label: 'Sales User' }, { key: 'reason', label: 'Reason' }]} /></details>
       </details>
+    </>}
+  </section>
+  <Q2WeeklyDistributorGroupsPanel report={report} month={selectedMonth} />
+  </>;
+}
+
+function Q2WeeklyDistributorGroupsPanel({ report, month }) {
+  const result = useMemo(() => report?.records?.length ? calculateQ2WeeklyDistributorGroups(report.records, month, report.headers || []) : null, [report, month]);
+  const sourceRows = result ? result.buckets.flatMap(({ key }) => result.sourceRowsByBucket[key]) : [];
+  const groupRows = result ? result.buckets.flatMap(({ key }) => result.groupRowsByBucket[key].map((row) => ({ week: result.summaries[key].bucket, ...row }))) : [];
+  const bucketRows = result?.buckets.map(({ key }) => result.summaries[key]) || [];
+  const exportCsv = (kind) => {
+    if (!result) return;
+    const prefix = `q2-weekly-distributor-groups-${month}`;
+    if (kind === 'summary') download(getQ2WeeklyDistributorSummaryRows(result, monthLabel(month)), `${prefix}-summary.csv`);
+    else if (kind === 'groups') download(tableRows(['Week', 'Senior Sales User', 'Emp ID', 'Designation', 'Distributor Identifier', 'Normalized Identifier', 'Type', 'Rows Mapped to Group', 'Source Rows'], groupRows, ['week', 'seniorSalesUser', 'empId', 'designation', 'distributorIdentifier', 'identifier', 'type', 'rowCount', 'sourceRows']), `${prefix}-groups.csv`);
+    else download(tableRows(['Week', 'Source Row', 'Date', 'Senior Sales User', 'Emp ID', 'Designation', 'Distributor Identifier', 'Identifier Source', 'Type', 'Eligible', 'Unique Contribution', 'Decision / Reason'], sourceRows, ['bucket', 'sourceRow', 'date', 'employee', 'empId', 'designation', 'distributorIdentifier', 'identifierSource', 'type', 'eligible', 'uniqueContribution', 'reason']), `${prefix}-source-audit.csv`);
+  };
+  const exportWorkbook = () => {
+    if (!result) return;
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(getQ2WeeklyDistributorSummaryRows(result, monthLabel(month))), 'Q2 Weekly Summary');
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(tableRows(['Week', 'Senior Sales User', 'Emp ID', 'Designation', 'Distributor Identifier', 'Normalized Identifier', 'Type', 'Rows Mapped to Group', 'Source Rows'], groupRows, ['week', 'seniorSalesUser', 'empId', 'designation', 'distributorIdentifier', 'identifier', 'type', 'rowCount', 'sourceRows'])), 'Unique Distributor Groups');
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(tableRows(['Week', 'Source Row', 'Date', 'Senior Sales User', 'Emp ID', 'Designation', 'Distributor Identifier', 'Identifier Source', 'Type', 'Eligible', 'Unique Contribution', 'Decision / Reason'], sourceRows, ['bucket', 'sourceRow', 'date', 'employee', 'empId', 'designation', 'distributorIdentifier', 'identifierSource', 'type', 'eligible', 'uniqueContribution', 'reason'])), 'Q2 Source Audit');
+    XLSX.writeFile(book, `q2-weekly-distributor-groups-${month}.xlsx`);
+  };
+
+  return <section className="card q2-weekly-groups-validation">
+    <div className="q3-section-title"><div><span className="eyebrow">SEPARATE Q.2 REFERENCE VALIDATION · {monthLabel(month)}</span><h3>Weekly Unique Distributor Groups</h3></div><span>Reference scope and grouped rows follow the supplied Excel pivot.</span></div>
+    {!report && <p>Upload a Check-In report to calculate weekly distributor groups.</p>}
+    {report && !result && <p>No source records are available for the selected month.</p>}
+    {result && <>
+      {result.sourceMissingColumns.length > 0 && <p className="q2-source-missing"><b>Source data missing:</b> this report requires {result.sourceMissingColumns.join(', ')}.</p>}
+      <p className="manager-q1-method-note">Unique group = WEEKLY SOURCE + normalized Senior Sales User (Emp ID fallback only when name is blank) + Designation + normalized Distributor Identifier + Type. Distributor Identifier priority: Dealer Channel Partner Code → Dealer Channel Partner → Company Name. Expected counts are reference values for October 2026 only; actuals always come from the loaded Check-In data.</p>
+      <div className="table-scroll"><table className="q3-bucket-table"><thead><tr><th>WEEKLY SOURCE</th><th>EXPECTED UNIQUE DISTRIBUTOR GROUPS</th><th>ACTUAL UNIQUE DISTRIBUTOR GROUPS</th><th>DIFFERENCE</th><th>STATUS</th></tr></thead><tbody>
+        {bucketRows.map((row) => <tr key={row.bucket}><th>{row.bucket}</th><td>{row.expected ?? 'Pending'}</td><td>{row.actual ?? 'N/A'}</td><td>{row.difference ?? 'N/A'}</td><td><b>{row.status}</b></td></tr>)}
+      </tbody></table></div>
+      <p className="q2-reference-subtotal"><b>Confirmed expected subtotal (WEEK-1 + WEEK-2):</b> {result.confirmedExpectedSubtotal}. This reference subtotal is not compared with the incomplete four-week actual total.</p>
+      <div className="q3-export-bar"><b>Q.2 downloads</b><button className="secondary" onClick={() => exportCsv('summary')}>Q2 comparison CSV</button><button className="secondary" onClick={() => exportCsv('groups')}>Q2 unique groups CSV</button><button className="secondary" onClick={() => exportCsv('audit')}>Q2 source audit CSV</button><button className="secondary" onClick={exportWorkbook}>Q2 Excel workbook</button></div>
+      <details className="manager-q1-source-audits"><summary>Q.2 diagnostics · {bucketRows.reduce((sum, row) => sum + row.rawSourceRowCount, 0).toLocaleString()} raw month rows · {groupRows.length.toLocaleString()} unique groups</summary>
+        <div className="table-scroll"><table><thead><tr><th>Week</th><th>Raw Source Rows</th><th>Rows After Eligibility</th><th>Missing Senior Identity</th><th>Blank / Invalid Identifiers</th><th>Duplicate Rows Removed</th><th>Unique Groups</th><th>Type Breakdown</th></tr></thead><tbody>{bucketRows.map((row) => <tr key={row.bucket}><th>{row.bucket}</th><td>{row.rawSourceRowCount}</td><td>{row.rowsAfterEligibilityFilters}</td><td>{row.missingSeniorRows}</td><td>{row.blankOrInvalidIdentifierRows}</td><td>{row.duplicateRowsRemoved}</td><td>{row.actual ?? 'N/A'}</td><td>{row.typeBreakdown.map(({ type, rows }) => `${type}: ${rows}`).join(', ') || '—'}</td></tr>)}</tbody></table></div>
+        {bucketRows.map((row) => <details key={row.bucket}><summary>{row.bucket} designation breakdown ({row.designationBreakdown.length} designations)</summary><div className="table-scroll"><table><thead><tr><th>Designation</th><th>Eligible Source Rows</th></tr></thead><tbody>{row.designationBreakdown.map((item) => <tr key={item.designation}><td>{item.designation}</td><td>{item.rows}</td></tr>)}</tbody></table></div></details>)}
+        <details><summary>Duplicate groups excluded from unique total (up to 20 examples per week)</summary>{bucketRows.map((row) => <div key={row.bucket}><h4>{row.bucket}</h4><AuditTable title={`${row.bucket} duplicate examples`} rows={row.duplicateExamples} columns={[{ key: 'seniorSalesUser', label: 'Senior Sales User' }, { key: 'designation', label: 'Designation' }, { key: 'distributorIdentifier', label: 'Distributor Identifier' }, { key: 'type', label: 'Type' }, { key: 'rowCount', label: 'Rows Mapped' }, { key: 'sourceRows', label: 'Source Rows' }]} /></div>)}</details>
+        <details><summary>All weekly unique groups · {groupRows.length.toLocaleString()} groups</summary><AuditTable title="Unique group rows" rows={groupRows} columns={[{ key: 'week', label: 'Week' }, { key: 'seniorSalesUser', label: 'Senior Sales User' }, { key: 'empId', label: 'Emp ID' }, { key: 'designation', label: 'Designation' }, { key: 'distributorIdentifier', label: 'Distributor Identifier' }, { key: 'type', label: 'Type' }, { key: 'rowCount', label: 'Rows Mapped' }, { key: 'sourceRows', label: 'Source Rows' }]} /></details>
+        <details><summary>Q2 source-row decisions · {sourceRows.length.toLocaleString()} rows</summary><AuditTable title="Q2 weekly eligibility and duplicate audit" rows={sourceRows} columns={[{ key: 'bucket', label: 'Week' }, { key: 'sourceRow', label: 'Source Row' }, { key: 'date', label: 'Date' }, { key: 'employee', label: 'Senior Sales User' }, { key: 'empId', label: 'Emp ID' }, { key: 'designation', label: 'Designation' }, { key: 'type', label: 'Type' }, { key: 'distributorIdentifier', label: 'Distributor Identifier' }, { key: 'identifierSource', label: 'Identifier Source' }, { key: 'eligible', label: 'Eligible', render: (row) => row.eligible ? 'Yes' : 'No' }, { key: 'uniqueContribution', label: 'Counted', render: (row) => row.uniqueContribution ? 'Yes' : 'No' }, { key: 'reason', label: 'Reason' }]} /></details>
+      </details>
+      {result.invalidDateRows.length > 0 && <details><summary>Invalid / blank date rows: {result.invalidDateRows.length.toLocaleString()}</summary><AuditTable title="Rows unable to assign to a week" rows={result.invalidDateRows} columns={[{ key: 'sourceRow', label: 'Source Row' }, { key: 'rawDate', label: 'Raw Date' }, { key: 'employee', label: 'Senior Sales User' }, { key: 'reason', label: 'Reason' }]} /></details>}
     </>}
   </section>;
 }
