@@ -30,7 +30,6 @@ const parseAmount = (value) => {
 };
 const roundUpToWhole = (value) => value === 0 ? 0 : Math.ceil(value - Number.EPSILON * Math.max(1, Math.abs(value)));
 const allowedSenior = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.managerTsoTsiTsm.map(normalize));
-const excludedZonal = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.excludedZonalManagers.map(normalize));
 
 export function getWeeklySalesPerformanceBucket(dateKey, selectedMonth) {
   const match = String(dateKey ?? '').match(/^(\d{4}-\d{2})-(\d{2})$/);
@@ -55,7 +54,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
-    if (!bucket || row.jointWorking !== 'YES' || !allowedSenior.has(normalize(row.designation)) || excludedZonal.has(normalize(row.zonalManager))) continue;
+    if (!bucket || row.jointWorking !== 'YES' || !allowedSenior.has(normalize(row.designation))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
     if (identity) ssp[bucket].add(identity);
   }
