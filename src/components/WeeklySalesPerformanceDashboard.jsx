@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
+import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../services/jointWorkingKpi';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../services/q1Q3ReportsService';
 import {
   buildWeeklySalesPerformanceExportRows,
@@ -28,6 +29,7 @@ const downloadCsv = (rows, name) => {
 export default function WeeklySalesPerformanceDashboard({ report, secondaryOrders, loading, progress, onSecondaryOrderFile }) {
   const input = useRef(null);
   const prepared = useMemo(() => prepareQ1Q3ReportRows(report?.records || []), [report]);
+  const managerKpiPrepared = useMemo(() => prepareJointWorkingRows(report?.records || []), [report]);
   const orderMonths = (secondaryOrders?.records || []).map(({ dateKey }) => dateKey?.slice(0, 7)).filter(Boolean);
   const months = [...new Set([...prepared.months, ...orderMonths])].sort();
   const [monthOverride, setMonthOverride] = useState('');
@@ -44,7 +46,8 @@ export default function WeeklySalesPerformanceDashboard({ report, secondaryOrder
   }, [planOverrides]);
   const month = months.includes(monthOverride) ? monthOverride : (months.at(-1) || '');
   const existingResult = useMemo(() => report && month ? calculateQ1Q3Reports(prepared, month) : null, [report, prepared, month]);
-  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders) : null, [prepared, month, existingResult, secondaryOrders]);
+  const managerKpiResult = useMemo(() => report && month ? calculateJointWorkingKpis(managerKpiPrepared, month) : null, [report, managerKpiPrepared, month]);
+  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders, managerKpiResult) : null, [prepared, month, existingResult, secondaryOrders, managerKpiResult]);
   const monthManualActuals = manualActuals[month] || {};
   const monthPlans = planOverrides[month] || {};
   const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans), [addon, monthManualActuals, monthPlans]);
@@ -102,7 +105,7 @@ export default function WeeklySalesPerformanceDashboard({ report, secondaryOrder
           const planValue = editingPlans ? (planDraft[row.key]?.[week.key] ?? row.plan) : Number(monthPlans[row.key]?.[week.key] ?? row.plan);
           return [<td className="weekly-plan" key={`${week.key}-plan`}>{editingPlans ? <input aria-label={`${row.label} ${week.label} plan`} type="number" min="0" step="any" value={planValue} className={isValidPlanValue(planValue) ? '' : 'invalid'} onChange={(event) => setPlanDraft((current) => ({ ...current, [row.key]: { ...(current[row.key] || {}), [week.key]: event.target.value } }))}/> : Number(planValue).toLocaleString('en-IN')}</td>, <td key={`${week.key}-actual`} className="weekly-actual">{isManual ? <input aria-label={`${row.label} ${week.label} actual`} type="number" min="0" step="any" value={monthManualActuals[row.key]?.[week.key] ?? ''} className={isValidManualActual(monthManualActuals[row.key]?.[week.key] ?? '') ? '' : 'invalid'} onChange={(event) => updateManual(row.key, week.key, event.target.value)} placeholder="Pending"/> : typeof actual === 'string' && !/^\d[\d,.]*$/.test(actual) ? <span className="weekly-status">{actual}</span> : actual}</td>];
         })}</tr>)}</tbody></table></div>
-      <p className="q3-scope-note">Q1 is unique eligible Senior + date joint-working days. Q2 is the qualifying Dealer/Other Check-In row count and feeds “No. of Retailers Visited.” Q4 uses Check-In rows with Joint Working = YES and Secondary sales type, summing Secondary Order Count (or counting qualifying rows when that field is blank). Q5 sums Basic Order Value from those Check-In rows. Average Order Value = Q5 ÷ Q4. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
+      <p className="q3-scope-note">Q1 is unique eligible Senior + date joint-working days. “No. of Retailers Visited” uses the existing Manager-only Joint Working KPI’s Q.2 Dealer + Other result by week. Q4 uses Check-In rows with Joint Working = YES and Secondary sales type, summing Secondary Order Count (or counting qualifying rows when that field is blank). Q5 sums Basic Order Value from those Check-In rows. Average Order Value = Q5 ÷ Q4. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
       <div className="q3-export-bar"><b>Downloads</b><button className="secondary" disabled={editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Weekly Plan vs Actual CSV</button><button className="secondary" disabled={editingPlans} onClick={exportWorkbook}>Excel workbook + secondary order audit</button></div>
     </section>}
   </main>;

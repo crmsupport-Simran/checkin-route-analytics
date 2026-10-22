@@ -3,7 +3,7 @@ import { Q1_Q3_REPORT_DESIGNATION_RULES } from './q1Q3ReportsService.js';
 export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
   { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Distinct eligible Senior Sales Users with Check-In rows' },
   { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
-  { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q2 qualifying Dealer + Other source rows' },
+  { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager-only Joint Working KPI' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Secondary Order Count' },
   { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Basic Order Value' },
   { key: 'averageOrderValue', label: 'AVERAGE ORDER VALUE', plan: 10000, actualSource: 'Calculated · Total Order Amount ÷ No. of Orders Received' },
@@ -47,10 +47,9 @@ function newWeekSets() {
   return Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, new Set()]));
 }
 
-export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null) {
+export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
   const ssp = newWeekSets();
   const jointDays = newWeekSets();
-  const retailers = newWeekSets();
   const orderCountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   const orderRowsByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
@@ -65,11 +64,6 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
     if (bucket) jointDays[bucket].add(`${row.managerIdentityKey}|${row.dateKey}`);
   }
-  for (const row of q1Q3Result?.details?.q2SourceRows || []) {
-    if (!row.eligible) continue;
-    const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
-    if (bucket) retailers[bucket].add(String(row.sourceRow));
-  }
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     if (row.jointWorking !== 'YES' || !isSecondarySalesType(row.designationSalesType)) continue;
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
@@ -82,7 +76,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const actualByRow = {
     ssp: Object.fromEntries(Object.keys(ssp).map((key) => [key, ssp[key].size])),
     jointDays: Object.fromEntries(Object.keys(jointDays).map((key) => [key, jointDays[key].size])),
-    retailersVisited: Object.fromEntries(Object.keys(retailers).map((key) => [key, retailers[key].size])),
+    retailersVisited: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, managerKpiResult?.values?.q2?.[key] ?? (prepared.rowsByMonth?.has(month) ? 0 : null)])),
     orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderRowsByWeek[key] ? orderCountByWeek[key] : (prepared.rowsByMonth?.has(month) ? 0 : null)])),
     orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderAmount[key] : null])),
     averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderCountByWeek[key] > 0 ? basicAmountByWeek[key] / orderCountByWeek[key] : null])),

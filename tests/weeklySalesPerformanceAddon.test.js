@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../src/services/jointWorkingKpi.js';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../src/services/q1Q3ReportsService.js';
 import { buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
 
@@ -27,11 +28,12 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   ];
   const prepared = prepareQ1Q3ReportRows(records);
   const existing = calculateQ1Q3Reports(prepared, '2026-10');
+  const managerKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10');
   const existingSnapshot = structuredClone(existing.values);
-  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing);
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, managerKpi);
   assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
+  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 2, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.orders, { week1: 0, week2: 0, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.orderAmount, { week1: 0, week2: 0, week3: 0, week4: 0 });
   assert.deepEqual(existing.values, existingSnapshot, 'add-on calculation must not mutate existing dashboard KPIs');
@@ -59,7 +61,8 @@ test('Q4/Q5 use Check-In rows with Joint Working YES and Secondary sales type; Q
   ];
   const prepared = prepareQ1Q3ReportRows(records);
   const q1Q3 = calculateQ1Q3Reports(prepared, '2026-10');
-  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3);
+  const managerKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10');
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3, null, managerKpi);
 
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.orders, { week1: 2, week2: 4, week3: 0, week4: 0 });
