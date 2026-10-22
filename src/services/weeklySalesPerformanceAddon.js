@@ -1,7 +1,7 @@
 import { Q1_Q3_REPORT_DESIGNATION_RULES } from './q1Q3ReportsService.js';
 
 export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
-  { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Distinct eligible Senior Sales Users with Check-In rows' },
+  { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Unique Manager + Territory employees with Joint Working = YES' },
   { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager + Territory Joint Working KPI' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Unique retailer Type ID · Joint Working YES + Secondary sales type + positive order evidence' },
@@ -28,6 +28,7 @@ const parseAmount = (value) => {
   const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
 };
+const roundUpToWhole = (value) => value === 0 ? 0 : Math.ceil(value - Number.EPSILON * Math.max(1, Math.abs(value)));
 const allowedSenior = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.managerTsoTsiTsm.map(normalize));
 const excludedZonal = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.excludedZonalManagers.map(normalize));
 
@@ -54,7 +55,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
-    if (!bucket || !allowedSenior.has(normalize(row.designation)) || excludedZonal.has(normalize(row.zonalManager))) continue;
+    if (!bucket || row.jointWorking !== 'YES' || !allowedSenior.has(normalize(row.designation)) || excludedZonal.has(normalize(row.zonalManager))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
     if (identity) ssp[bucket].add(identity);
   }
@@ -77,14 +78,14 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     if (hasSecondaryOrder && retailerId) orderRetailersByWeek[bucket].add(retailerId);
     basicAmountByWeek[bucket] += parseAmount(row.basicOrderValue) ?? 0;
   }
-  const orderAmount = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, basicAmountByWeek[key]]));
+  const orderAmount = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, roundUpToWhole(basicAmountByWeek[key])]));
   const actualByRow = {
     ssp: Object.fromEntries(Object.keys(ssp).map((key) => [key, ssp[key].size])),
     jointDays: Object.fromEntries(Object.keys(jointDays).map((key) => [key, jointDays[key].size])),
     retailersVisited: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, managerKpiResult?.values?.q2?.[key] ?? (prepared.rowsByMonth?.has(month) ? 0 : null)])),
     orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderRetailersByWeek[key].size : null])),
     orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderAmount[key] : null])),
-    averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderRetailersByWeek[key].size > 0 ? basicAmountByWeek[key] / orderRetailersByWeek[key].size : null])),
+    averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, orderRetailersByWeek[key].size > 0 ? roundUpToWhole(basicAmountByWeek[key] / orderRetailersByWeek[key].size) : null])),
     retainedRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
     newRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
   };
