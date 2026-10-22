@@ -16,12 +16,10 @@ const download = (rows, fileName) => {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 const tableRows = (headers, rows, fields) => [headers, ...rows.map((row) => fields.map((field) => row[field] ?? ''))];
-const OCTOBER_REFERENCE = Object.freeze({ week1: 61, week2: 81, week3: 58, week4: 0 });
-
-export default function ManagerExecutiveQ1Dashboard({ report, month }) {
-  const prepared = useMemo(() => prepareManagerExecutiveQ1Rows(report?.records || []), [report]);
+export default function ManagerExecutiveQ1Dashboard({ report, month, preparedReport, calculatedResult }) {
+  const prepared = useMemo(() => preparedReport || prepareManagerExecutiveQ1Rows(report?.records || []), [preparedReport, report]);
   const selectedMonth = prepared.months.includes(month) ? month : (prepared.months.at(-1) || '');
-  const result = useMemo(() => selectedMonth ? calculateManagerExecutiveQ1(prepared, selectedMonth) : null, [prepared, selectedMonth]);
+  const result = useMemo(() => calculatedResult || (selectedMonth ? calculateManagerExecutiveQ1(prepared, selectedMonth) : null), [calculatedResult, prepared, selectedMonth]);
   const managerRows = result ? result.buckets.flatMap((bucket) => result.details.managerSummariesByBucket[bucket.key].map((row) => ({ bucket: bucket.label, ...row }))) : [];
   const q1SourceRows = result ? result.buckets.flatMap((bucket) => result.details.sourceRowsByBucket[bucket.key]) : [];
   const q2SourceRows = result ? result.buckets.flatMap((bucket) => result.details.q2SourceRowsByBucket[bucket.key]) : [];
@@ -50,6 +48,7 @@ export default function ManagerExecutiveQ1Dashboard({ report, month }) {
   return <>
   <section className="card q3-bucket-card manager-executive-q1">
     <div className="q3-section-title"><div><span className="eyebrow">MANAGER-ONLY KPI · {monthLabel(selectedMonth)}</span><h3>Manager Joint Working Dashboard · Q1 &amp; Q2</h3></div><span>Uses the same month selection as this dashboard.</span></div>
+    <p className="manager-q1-method-note"><b>Scope:</b> This existing KPI uses approved Manager designations across visit Types. The separate Q1–Q3 report uses Manager + TSO/TSI/TSM designations and Type = DEALER.</p>
     {!report && <p>Upload a Check-In report to calculate these manager KPIs.</p>}
     {report && !result && <p>No valid visit dates found for the selected Check-In report.</p>}
     {result && <>
@@ -58,7 +57,6 @@ export default function ManagerExecutiveQ1Dashboard({ report, month }) {
         <tr><th>Q.2 · Unique Channel Partners visited by Managers</th>{result.buckets.map((bucket) => <td key={bucket.key}>{result.q2Values[bucket.key].toLocaleString()}</td>)}<td>{q2Total.toLocaleString()}</td></tr>
       </tbody></table></div>
       <p className="manager-q1-method-note">Q.1 sums each Manager's distinct visit dates after Joint Working = YES and eligible Executive/BDO matching. Q.2 counts each normalized Channel Partner once per week across the approved Manager-only group.</p>
-      {selectedMonth === '2026-10' && <details className="manager-q1-reconciliation"><summary>October Q.1 weekly reconciliation (reference only)</summary><div className="table-scroll"><table><thead><tr><th>Week</th><th>Calculated from loaded file</th><th>Expected reference</th><th>Difference</th></tr></thead><tbody>{result.buckets.map((bucket) => <tr key={bucket.key}><th>{bucket.label}</th><td>{result.values[bucket.key]}</td><td>{OCTOBER_REFERENCE[bucket.key]}</td><td>{result.values[bucket.key] - OCTOBER_REFERENCE[bucket.key]}</td></tr>)}</tbody></table></div><p>Reference values never replace calculated results.</p></details>}
       <div className="q3-manager-grid manager-q1-audits">
         <AuditTable title="Q.1 · Manager weekly unique visit-days" rows={managerRows} columns={[{ key: 'bucket', label: 'Week' }, { key: 'manager', label: 'Manager' }, { key: 'empId', label: 'Emp ID' }, { key: 'visitDays', label: 'Unique Visit Days' }, { key: 'dates', label: 'Dates' }, { key: 'sourceRows', label: 'Source Rows' }]} />
         <AuditTable title="Q.2 · Unique Channel Partners by week" rows={result.buckets.flatMap((bucket) => result.details.q2UniqueByBucket[bucket.key])} columns={[{ key: 'bucket', label: 'Week' }, { key: 'distributor', label: 'Channel Partner' }, { key: 'identifier', label: 'Normalized Identifier' }, { key: 'identifierSource', label: 'Identifier Source' }, { key: 'manager', label: 'Sample Manager' }, { key: 'sourceRows', label: 'Source Rows' }]} />
@@ -82,6 +80,9 @@ function Q2WeeklyDistributorGroupsPanel({ report, month }) {
   const sourceRows = result ? result.buckets.flatMap(({ key }) => result.sourceRowsByBucket[key]) : [];
   const groupRows = result ? result.buckets.flatMap(({ key }) => result.groupRowsByBucket[key].map((row) => ({ week: result.summaries[key].bucket, ...row }))) : [];
   const bucketRows = result?.buckets.map(({ key }) => result.summaries[key]) || [];
+  const q2FirstHalfActual = result && result.summaries.week1.actual != null && result.summaries.week2.actual != null
+    ? result.summaries.week1.actual + result.summaries.week2.actual
+    : null;
   const exportCsv = (kind) => {
     if (!result) return;
     const prefix = `q2-weekly-distributor-groups-${month}`;
@@ -109,7 +110,7 @@ function Q2WeeklyDistributorGroupsPanel({ report, month }) {
         {bucketRows.map((row) => <tr key={row.bucket}><th>{row.bucket}</th><td>{row.expected ?? 'Pending'}</td><td>{row.actual ?? 'N/A'}</td><td>{row.difference ?? 'N/A'}</td><td><b>{row.status}</b></td></tr>)}
       </tbody></table></div>
       {month === result.referenceMonth && result.summaries.week2.expected != null && result.summaries.week2.uniqueGroupsAddedOnDay15 > 0 && <p className="q2-reference-subtotal"><b>WEEK-2 boundary reconciliation:</b> the supplied reference's Week 2 contains {result.summaries.week2.referenceBoundaryUniqueGroups} groups from days 8–14. The required 8–15 bucket adds {result.summaries.week2.uniqueGroupsAddedOnDay15} new groups from Oct 15, so the calculated total is {result.summaries.week2.actual} ({result.summaries.week2.difference > 0 ? '+' : ''}{result.summaries.week2.difference} vs. the reference). Oct 15 remains included in WEEK-2.</p>}
-      <p className="q2-reference-subtotal"><b>Confirmed expected subtotal (WEEK-1 + WEEK-2):</b> {result.confirmedExpectedSubtotal}. This reference subtotal is not compared with the incomplete four-week actual total.</p>
+      <p className="q2-reference-subtotal"><b>WEEK-1 + WEEK-2 subtotal:</b> actual {q2FirstHalfActual ?? 'N/A'} · confirmed expected {result.confirmedExpectedSubtotal}{q2FirstHalfActual == null ? '' : ` · difference ${q2FirstHalfActual - result.confirmedExpectedSubtotal > 0 ? '+' : ''}${q2FirstHalfActual - result.confirmedExpectedSubtotal}`}. This is a two-week comparison only; WEEK-3 and WEEK-4 expectations are still pending.</p>
       <div className="q3-export-bar"><b>Q.2 downloads</b><button className="secondary" onClick={() => exportCsv('summary')}>Q2 comparison CSV</button><button className="secondary" onClick={() => exportCsv('groups')}>Q2 unique groups CSV</button><button className="secondary" onClick={() => exportCsv('audit')}>Q2 source audit CSV</button><button className="secondary" onClick={exportWorkbook}>Q2 Excel workbook</button></div>
       <details className="manager-q1-source-audits"><summary>Q.2 diagnostics · {bucketRows.reduce((sum, row) => sum + row.rawSourceRowCount, 0).toLocaleString()} raw month rows · {groupRows.length.toLocaleString()} unique groups</summary>
         <div className="table-scroll"><table><thead><tr><th>Week</th><th>Raw Source Rows</th><th>Rows After Eligibility</th><th>Missing Senior Identity</th><th>Blank / Invalid Identifiers</th><th>Duplicate Rows Removed</th><th>Unique Groups</th><th>Type Breakdown</th>{month === result.referenceMonth && <><th>Week-2 Groups Through Day 14</th><th>New Day-15 Groups</th></>}</tr></thead><tbody>{bucketRows.map((row) => <tr key={row.bucket}><th>{row.bucket}</th><td>{row.rawSourceRowCount}</td><td>{row.rowsAfterEligibilityFilters}</td><td>{row.missingSeniorRows}</td><td>{row.blankOrInvalidIdentifierRows}</td><td>{row.duplicateRowsRemoved}</td><td>{row.actual ?? 'N/A'}</td><td>{row.typeBreakdown.map(({ type, rows }) => `${type}: ${rows}`).join(', ') || '—'}</td>{month === result.referenceMonth && <><td>{row.referenceBoundaryUniqueGroups ?? '—'}</td><td>{row.uniqueGroupsAddedOnDay15 ?? '—'}</td></>}</tr>)}</tbody></table></div>

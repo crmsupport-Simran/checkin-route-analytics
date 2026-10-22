@@ -16,7 +16,7 @@ export const Q1_Q3_REPORT_DESIGNATION_RULES = Object.freeze({
   executiveBdo: Object.freeze([
   'EXECUTIVE-SALES', 'EXECUTIVE-SALES (4)',
   'BUSINESS DEVELOPMENT OFFICER', 'BUSINESS DEVELOPMENT OFFICER (4)',
-  'SR. EXECUTIVE-SALES', 'SR. EXECUTIVE-SALES (4)',
+  'SR. EXECUTIVE-SALES', 'SR. EXECUTIVE-SALES (4)', 'SR. EXECUTIVE-BACKOFFICE',
   ]),
   seniorQ3: Object.freeze([
   'DEPUTY MANAGER-SALES (4)', 'DEPUTY MANAGER-SALES', 'MANAGER-SALES',
@@ -30,6 +30,11 @@ export const Q1_Q3_REPORT_DESIGNATION_RULES = Object.freeze({
   'SHANTANU ATTARY',
   ]),
 });
+export const Q1_WEEKLY_RECONCILIATION = Object.freeze({
+  referenceMonth: '2026-10',
+  expectedByBucket: Object.freeze({ week1: 61, week2: 81, week3: 58, week4: 0 }),
+  expectedTotal: 200,
+});
 const REPORT_BDO_DESIGNATIONS = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.executiveBdo);
 const REPORT_MANAGER_GROUP = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.managerTsoTsiTsm);
 const REPORT_Q3_SENIORS = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.seniorQ3);
@@ -38,6 +43,11 @@ const REPORT_EXCLUDED_ZONAL_MANAGERS = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.ex
 function hasApprovedDesignation(value, approvedDesignations) {
   const designations = normalizeDesignation(value).split(',').map((designation) => designation.trim()).filter(Boolean);
   return designations.length > 0 && designations.every((designation) => approvedDesignations.has(designation));
+}
+
+function hasAnyApprovedDesignation(value, approvedDesignations) {
+  const designations = normalizeDesignation(value).split(',').map((designation) => designation.trim()).filter(Boolean);
+  return designations.some((designation) => approvedDesignations.has(designation));
 }
 
 function parseDate(value) {
@@ -113,7 +123,23 @@ export function prepareQ1Q3ReportRows(records = []) {
     if (!rowsByMonth.has(month)) rowsByMonth.set(month, []);
     rowsByMonth.get(month).push(preparedRow);
   }
-  return { rows, rowsByMonth, months: [...months].sort(), invalidDateRows };
+  return { rows, rowsByMonth, months: [...months].sort(), invalidDateRows, rawRecordCount: records.length };
+}
+
+function evaluateQ1Eligibility(row) {
+  const managerEligible = hasApprovedDesignation(row.designation, REPORT_MANAGER_GROUP);
+  const jointWorkingDesignationTokens = row.jointWorkingDesignation.split(',').map((designation) => designation.trim()).filter(Boolean);
+  const matchedExecutiveBdoTokens = jointWorkingDesignationTokens.filter((designation) => REPORT_BDO_DESIGNATIONS.has(designation));
+  const executiveBdoEligible = matchedExecutiveBdoTokens.length > 0;
+  const namedPartner = Boolean(row.seniorName);
+  const managerIdentityAvailable = Boolean(row.empId || row.salesUserKey);
+  const jointWorkingYes = row.jointWorking === 'YES';
+  const zonalExcluded = REPORT_EXCLUDED_ZONAL_MANAGERS.has(row.zonalManagerKey);
+  const jointWorkingEligible = managerEligible && jointWorkingYes && namedPartner && executiveBdoEligible && !zonalExcluded;
+  return {
+    managerEligible, matchedExecutiveBdoTokens, executiveBdoEligible, namedPartner, managerIdentityAvailable, jointWorkingYes,
+    zonalExcluded, jointWorkingEligible, q1Eligible: jointWorkingEligible && row.type === 'DEALER' && managerIdentityAvailable,
+  };
 }
 
 export function calculateQ1Q3Reports(prepared, month) {
@@ -161,13 +187,24 @@ export function calculateQ1Q3Reports(prepared, month) {
 
   for (const row of monthRows) {
     if (row.day > daysInMonth) continue;
+    const matchingBuckets = buckets.filter(({ from, to }) => row.day >= from && row.day <= to);
     if (REPORT_EXCLUDED_ZONAL_MANAGERS.has(row.zonalManagerKey)) {
+      const excludedEligibility = evaluateQ1Eligibility(row);
       excludedZonalManagerRows += 1;
       increment(excludedZonalManagerBreakdown, row.zonalManager || '(blank)');
-      excludedZonalManagerSourceRows.push({ sourceRow: row.sourceRow, date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', jointWorkingName: row.seniorLabel || '(blank)', type: row.typeLabel || '(blank)', zonalManager: row.zonalManager || '(blank)', reason: 'Excluded by Zonal Manager rule' });
+      excludedZonalManagerSourceRows.push({ bucket: matchingBuckets[0]?.label || '', sourceRow: row.sourceRow, date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', jointWorkingName: row.seniorLabel || '(blank)', type: row.typeLabel || '(blank)', zonalManager: row.zonalManager || '(blank)', reason: 'Excluded by Zonal Manager rule' });
+      q1SourceRows.push({
+        bucket: matchingBuckets[0]?.label || '', sourceRow: row.sourceRow, date: row.dateLabel, dateKey: row.dateKey, managerIdentityKey: row.managerIdentityKey,
+        groupingKey: `${row.managerIdentityKey} | ${row.dateKey}`,
+        employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)',
+        jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)',
+        matchedExecutiveBdoTokens: excludedEligibility.matchedExecutiveBdoTokens.join(', '),
+        jointWorking: row.jointWorkingLabel || '(blank)', jointWorkingName: row.seniorLabel || '(blank)',
+        type: row.typeLabel || '(blank)', zonalManager: row.zonalManager || '(blank)',
+        eligible: false, uniqueContribution: false, reason: 'Excluded by Zonal Manager rule',
+      });
       continue;
     }
-    const matchingBuckets = buckets.filter(({ from, to }) => row.day >= from && row.day <= to);
     increment(rawBreakdowns.types, row.typeLabel || '(blank)');
     if (row.jointWorking === 'YES') {
       yesRows += 1;
@@ -181,20 +218,18 @@ export function calculateQ1Q3Reports(prepared, month) {
     // Q1/Q2 roles come from the source row: Designation belongs to Sales User
     // (Manager), while Joint Working Designation belongs to Joint Working Name
     // (Executive/BDO).
-    const isManagerByDesignation = hasApprovedDesignation(row.designation, REPORT_MANAGER_GROUP);
-    const isBdoByJointDesignation = hasApprovedDesignation(row.jointWorkingDesignation, REPORT_BDO_DESIGNATIONS);
-    const hasJointPartnerName = Boolean(row.seniorName);
-    const isQualifyingJointWork = isManagerByDesignation && row.jointWorking === 'YES' && isBdoByJointDesignation && hasJointPartnerName;
-    const isQualifyingQ1 = isQualifyingJointWork && row.type === 'DEALER';
+    const q1Eligibility = evaluateQ1Eligibility(row);
+    const { managerEligible: isManagerByDesignation, matchedExecutiveBdoTokens, executiveBdoEligible: isBdoByJointDesignation, namedPartner: hasJointPartnerName, jointWorkingEligible: isQualifyingJointWork, q1Eligible: isQualifyingQ1 } = q1Eligibility;
     const q2Type = row.type === 'DEALER' || row.type === 'OTHER';
-    const rowBase = { sourceRow: row.sourceRow, date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', jointWorkingName: row.seniorLabel || '(blank)', type: row.typeLabel || '(blank)', zonalManager: row.zonalManager || '(blank)', company: row.companyName || '(blank)', dealerChannelPartnerCode: row.dealerChannelPartnerCode || '(blank)', dealerChannelPartner: row.dealerChannelPartner || '(blank)' };
+    const rowBase = { sourceRow: row.sourceRow, date: row.dateLabel, dateKey: row.dateKey, managerIdentityKey: row.managerIdentityKey, groupingKey: `${row.managerIdentityKey} | ${row.dateKey}`, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', matchedExecutiveBdoTokens: matchedExecutiveBdoTokens.join(', '), jointWorking: row.jointWorkingLabel || '(blank)', jointWorkingName: row.seniorLabel || '(blank)', type: row.typeLabel || '(blank)', zonalManager: row.zonalManager || '(blank)', company: row.companyName || '(blank)', dealerChannelPartnerCode: row.dealerChannelPartnerCode || '(blank)', dealerChannelPartner: row.dealerChannelPartner || '(blank)' };
     const q1Reasons = [];
     if (!isManagerByDesignation) q1Reasons.push('Sales User Designation is not on the approved Q1/Q2 Senior list');
     if (row.jointWorking !== 'YES') q1Reasons.push('Joint Working is not YES');
     if (!hasJointPartnerName) q1Reasons.push('Joint Working Name is blank');
     if (!isBdoByJointDesignation) q1Reasons.push('Joint Working Designation is not an approved Executive/BDO designation');
+    if (!q1Eligibility.managerIdentityAvailable) q1Reasons.push('Sales User Emp ID and normalized name are both blank');
     if (isQualifyingJointWork && row.type !== 'DEALER') q1Reasons.push('Type is not DEALER');
-    q1SourceRows.push({ ...rowBase, eligible: isQualifyingQ1, reason: isQualifyingQ1 ? 'Included: Manager + date contributes once per bucket' : q1Reasons.join('; ') });
+      q1SourceRows.push({ ...rowBase, bucket: matchingBuckets[0]?.label || '', eligible: isQualifyingQ1, uniqueContribution: false, reason: isQualifyingQ1 ? `Eligible source row; duplicate status resolved by Manager + date` : q1Reasons.join('; ') });
     const q2Reasons = [...q1Reasons];
     if (isQualifyingJointWork && !q2Type) q2Reasons.push('Type is not DEALER or OTHER');
     q2SourceRows.push({ ...rowBase, eligible: isQualifyingJointWork && q2Type, reason: isQualifyingJointWork && q2Type ? 'Included: qualifying source row counted once' : q2Reasons.join('; ') });
@@ -227,7 +262,15 @@ export function calculateQ1Q3Reports(prepared, month) {
       q1QualifyingRows += 1;
       for (const bucket of matchingBuckets) {
         const visitKey = `${row.managerIdentityKey}\u0000${row.dateKey}`;
+        const q1AuditRow = q1SourceRows[q1SourceRows.length - 1];
+        if (!q1VisitDaysByBucket[bucket.key].has(visitKey)) {
+          q1AuditRow.uniqueContribution = true;
+          q1AuditRow.reason = `Counted once for Manager + date; matched token(s): ${matchedExecutiveBdoTokens.join(', ')}`;
+        } else {
+          q1AuditRow.reason = `Duplicate Manager + date row; already counted on source row ${q1VisitDaysByBucket[bucket.key].get(visitKey).firstSourceRow}`;
+        }
         const visitDay = q1VisitDaysByBucket[bucket.key].get(visitKey) || { senior: row.salesUserName, empId: row.empId, date: row.dateKey, rawRows: 0, count: 1 };
+        if (!visitDay.firstSourceRow) visitDay.firstSourceRow = row.sourceRow;
         visitDay.rawRows += 1;
         q1VisitDaysByBucket[bucket.key].set(visitKey, visitDay);
 
@@ -304,6 +347,61 @@ export function calculateQ1Q3Reports(prepared, month) {
   const q1Values = Object.fromEntries(buckets.map(({ key }) => [key,
     q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.visitDays, 0),
   ]));
+  const q1WeeklyDiagnostics = Object.fromEntries(buckets.filter(({ key }) => key.startsWith('week')).map((bucket) => {
+    const diagnostic = {
+      bucket: bucket.label,
+      rawLoadedRows: prepared.rawRecordCount ?? prepared.rows.length + (prepared.invalidDateRows?.length || 0),
+      validDateRows: prepared.rows.length,
+      selectedMonthRows: monthRows.length,
+      rowsInBucket: 0,
+      managerDesignationRows: 0,
+      rowsAfterZonalExclusions: 0,
+      zonalManagerExcludedRows: 0,
+      jointWorkingYesRows: 0,
+      namedPartnerRows: 0,
+      eligibleExecutiveBdoRows: 0,
+      dealerRows: 0,
+      managerIdentityRows: 0,
+      qualifyingSourceRows: 0,
+      duplicateSourceRowsRemoved: 0,
+      finalUniqueManagerDays: 0,
+      exclusionReasons: {},
+    };
+    const managerDays = new Set();
+    for (const row of monthRows) {
+      if (row.day < bucket.from || row.day > bucket.to) continue;
+      diagnostic.rowsInBucket += 1;
+      const eligibility = evaluateQ1Eligibility(row);
+      const reasons = [];
+      if (!eligibility.managerEligible) reasons.push('Sales User Designation is not on the approved Q1/Q2 Senior list');
+      else diagnostic.managerDesignationRows += 1;
+      if (eligibility.zonalExcluded) {
+        reasons.push('Excluded by Zonal Manager rule');
+        diagnostic.zonalManagerExcludedRows += 1;
+      }
+      else if (eligibility.managerEligible) diagnostic.rowsAfterZonalExclusions += 1;
+      if (!eligibility.jointWorkingYes) reasons.push('Joint Working is not YES');
+      else if (eligibility.managerEligible && !eligibility.zonalExcluded) diagnostic.jointWorkingYesRows += 1;
+      if (!eligibility.namedPartner) reasons.push('Joint Working Name is blank');
+      else if (eligibility.managerEligible && !eligibility.zonalExcluded && eligibility.jointWorkingYes) diagnostic.namedPartnerRows += 1;
+      if (!eligibility.executiveBdoEligible) reasons.push('Joint Working Designation has no approved Executive/BDO token');
+      else if (eligibility.managerEligible && !eligibility.zonalExcluded && eligibility.jointWorkingYes && eligibility.namedPartner) diagnostic.eligibleExecutiveBdoRows += 1;
+      if (row.type !== 'DEALER') reasons.push('Type is not DEALER');
+      else if (eligibility.jointWorkingEligible) diagnostic.dealerRows += 1;
+      if (!eligibility.managerIdentityAvailable) reasons.push('Sales User Emp ID and normalized name are both blank');
+      else if (eligibility.jointWorkingEligible && row.type === 'DEALER') diagnostic.managerIdentityRows += 1;
+      if (eligibility.q1Eligible) {
+        diagnostic.qualifyingSourceRows += 1;
+        managerDays.add(`${row.managerIdentityKey}\u0000${row.dateKey}`);
+      } else {
+        const reason = reasons.join('; ') || 'Row did not qualify';
+        diagnostic.exclusionReasons[reason] = (diagnostic.exclusionReasons[reason] || 0) + 1;
+      }
+    }
+    diagnostic.finalUniqueManagerDays = managerDays.size;
+    diagnostic.duplicateSourceRowsRemoved = diagnostic.qualifyingSourceRows - diagnostic.finalUniqueManagerDays;
+    return [bucket.key, diagnostic];
+  }));
   // Half-month KPIs add their weekly subtotals, so repeat types/managers and
   // distributors are counted once in each week.
   q1Values.firstHalf = q1Values.week1 + q1Values.week2;
@@ -363,7 +461,7 @@ export function calculateQ1Q3Reports(prepared, month) {
       item.rows += 1;
       item.q1q2Senior ||= field === 'Sales User Designation' && hasApprovedDesignation(value, REPORT_MANAGER_GROUP);
       item.q3Senior ||= field === 'Sales User Designation' && hasApprovedDesignation(value, REPORT_Q3_SENIORS);
-      item.executiveBdo ||= field === 'Joint Working Designation' && hasApprovedDesignation(value, REPORT_BDO_DESIGNATIONS);
+      item.executiveBdo ||= field === 'Joint Working Designation' && hasAnyApprovedDesignation(value, REPORT_BDO_DESIGNATIONS);
       item.approved = item.q1q2Senior || item.q3Senior || item.executiveBdo;
       if (row.salesUserName) item.sampleEmployees.add(row.salesUserName);
       item.sampleSourceRows.add(row.sourceRow);
@@ -393,7 +491,11 @@ export function calculateQ1Q3Reports(prepared, month) {
       q3: q3Values,
     },
     details: {
+      rawLoadedRows: prepared.rawRecordCount ?? prepared.rows.length + (prepared.invalidDateRows?.length || 0),
+      validDateRowsAcrossFile: prepared.rows.length,
+      invalidDateRowsAcrossFile: prepared.invalidDateRows?.length || 0,
       totalMonthRows: monthRows.filter((row) => row.day <= daysInMonth).length,
+      rowsOutsideSelectedMonth: Math.max(0, (prepared.rawRecordCount ?? prepared.rows.length + (prepared.invalidDateRows?.length || 0)) - (prepared.invalidDateRows?.length || 0) - monthRows.length),
       excludedZonalManagerRows,
       excludedZonalManagerBreakdown: [...excludedZonalManagerBreakdown].map(([manager, count]) => ({ manager, count })).sort((a, b) => a.manager.localeCompare(b.manager)),
       excludedZonalManagerSourceRows,
@@ -410,6 +512,7 @@ export function calculateQ1Q3Reports(prepared, month) {
       rawBreakdowns: Object.fromEntries(Object.entries(rawBreakdowns).map(([key, map]) => [key, [...map].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))])),
       q1QualifyingRows,
       q1SourceRows,
+      q1WeeklyDiagnostics,
       q1SeniorNameDayCeiling: q1SeniorNameDays.size,
       q1JuniorDesignationExcludedRows: q1JuniorDesignationExcludedRows.sort((a, b) => a.designation.localeCompare(b.designation) || a.date.localeCompare(b.date) || a.employee.localeCompare(b.employee)),
       q1BySeniorByBucket,
@@ -442,6 +545,24 @@ export function getQ1Q3ExportRows(result, monthLabel) {
     [monthLabel, 'Q.2 NO. OF RETAILER VISITED, BDO WITH SENIOR SALES PERSON', ...buckets.map(({ key }) => result.values.q2[key])],
     [monthLabel, 'Q.3 NO. OF DISTRIBUTOR VISITED, PHYSICALLY BY SENIOR PERSON (UNIQUE NUMBER)', ...buckets.map(({ key }) => result.values.q3[key])],
   ];
+}
+
+export function getQ1WeeklyReconciliationRows(result, monthLabel) {
+  if (!result) return [];
+  const isReferenceMonth = result.month === Q1_WEEKLY_RECONCILIATION.referenceMonth;
+  const weeklyBuckets = getKpiBuckets(result.month).filter(({ key }) => key.startsWith('week'));
+  const rows = weeklyBuckets.map(({ key, label }) => {
+    const expected = isReferenceMonth ? Q1_WEEKLY_RECONCILIATION.expectedByBucket[key] : null;
+    const actual = result.values.q1[key];
+    return [monthLabel, label, expected ?? 'Pending', actual, expected == null ? 'N/A' : actual - expected,
+      expected == null ? 'EXPECTED PENDING' : actual === expected ? 'MATCHED' : 'MISMATCH'];
+  });
+  const actualTotal = weeklyBuckets.reduce((sum, { key }) => sum + result.values.q1[key], 0);
+  const expectedTotal = isReferenceMonth ? Q1_WEEKLY_RECONCILIATION.expectedTotal : null;
+  rows.push([monthLabel, 'TOTAL', expectedTotal ?? 'Pending', actualTotal,
+    expectedTotal == null ? 'N/A' : actualTotal - expectedTotal,
+    expectedTotal == null ? 'EXPECTED PENDING' : actualTotal === expectedTotal ? 'MATCHED' : 'MISMATCH']);
+  return [['Month', 'WEEKLY SOURCE', 'EXPECTED', 'ACTUAL', 'DIFFERENCE', 'STATUS'], ...rows];
 }
 
 export function getQ1Q3DetailExportRows(result, question, monthLabel) {
