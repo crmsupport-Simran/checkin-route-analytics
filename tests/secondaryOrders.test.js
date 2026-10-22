@@ -45,7 +45,7 @@ test('secondary-order weekly date uses Date Created and ignores its time compone
   assert.deepEqual(parsed.records.map((row) => row.dateKey), ['2026-10-01', '2026-10-08']);
 });
 
-test('Q.4 counts unique order IDs and Q.5 sums only Basic Amount by weekly bucket and exports the same actuals', () => {
+test('weekly Q.4/Q.5 actuals do not read the supplemental order upload', () => {
   const sourceRows = [{ date: '01/10/2026', salesUserName: 'Senior', empId: '1', designation: 'MANAGER-SALES' }];
   const prepared = prepareQ1Q3ReportRows(sourceRows);
   const existing = calculateQ1Q3Reports(prepared, '2026-10');
@@ -55,20 +55,20 @@ test('Q.4 counts unique order IDs and Q.5 sums only Basic Amount by weekly bucke
     { sourceRow: 4, orderId: 'SO-2', dateKey: '2026-10-09', basicAmount: 200 },
   ] };
   const result = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, secondaryOrders);
-  assert.deepEqual(result.actualByRow.orders, { week1: 1, week2: 1, week3: 0, week4: 0 });
-  assert.deepEqual(result.actualByRow.orderAmount, { week1: 150, week2: 200, week3: 0, week4: 0 });
+  assert.deepEqual(result.actualByRow.orders, { week1: 0, week2: 0, week3: 0, week4: 0 });
+  assert.deepEqual(result.actualByRow.orderAmount, { week1: 0, week2: 0, week3: 0, week4: 0 });
   const exported = buildWeeklySalesPerformanceExportRows(result);
-  assert.equal(exported[4][2], 1);
-  assert.equal(exported[5][2], 150);
-  assert.equal(exported[5][4], 200);
+  assert.equal(exported[4][2], 0);
+  assert.equal(exported[5][2], 0);
 });
 
-test('Q.5 is marked incomplete when a selected-week order has no Basic Amount', () => {
+test('Check-In sourced Q.4/Q.5 stay pending when there is no Check-In month data', () => {
   const prepared = prepareQ1Q3ReportRows([]);
   const result = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', null, { records: [
     { sourceRow: 2, orderId: 'SO-1', dateKey: '2026-10-01', basicAmount: null },
   ] });
+  assert.equal(result.actualByRow.orders.week1, null);
   assert.equal(result.actualByRow.orderAmount.week1, null);
-  assert.match(result.statuses.orderAmount.week1, /Basic order value missing/);
-  assert.equal(buildWeeklySalesPerformanceExportRows(result)[5][2], 'DATA INCOMPLETE · Basic order value missing');
+  assert.equal(buildWeeklySalesPerformanceExportRows(result)[4][2], 'Check-In · Joint Working YES + Secondary order count');
+  assert.equal(buildWeeklySalesPerformanceExportRows(result)[5][2], 'Check-In · Joint Working YES + Secondary Basic Order Value');
 });

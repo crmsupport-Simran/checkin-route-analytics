@@ -111,6 +111,8 @@ export function prepareQ1Q3ReportRows(records = []) {
       seniorLabel: String(record.jointWorkingName ?? '').trim().replace(/\s+/g, ' '),
       type: normalize(record.type),
       typeLabel: String(record.type ?? '').trim().replace(/\s+/g, ' '),
+      secondaryOrderCount: record.secondaryOrderCount,
+      basicOrderValue: record.basicOrderValue,
       distributor: normalize(record.dealerChannelPartnerCode) || normalize(record.dealerChannelPartner) || normalize(record.companyName),
       distributorLabel: String(record.dealerChannelPartnerCode || record.dealerChannelPartner || record.companyName || '').trim().replace(/\s+/g, ' '),
       companyName: String(record.companyName ?? '').trim().replace(/\s+/g, ' '),
