@@ -28,12 +28,13 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   ];
   const prepared = prepareQ1Q3ReportRows(records);
   const existing = calculateQ1Q3Reports(prepared, '2026-10');
-  const managerKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10');
+  const territoryKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10', { includeTerritory: true });
   const existingSnapshot = structuredClone(existing.values);
-  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, managerKpi);
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, territoryKpi);
   assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 2, week3: 0, week4: 1 });
+  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
+  assert.deepEqual(addon.actualByRow.retailersVisited, Object.fromEntries(['week1', 'week2', 'week3', 'week4'].map((week) => [week, territoryKpi.values.q2[week]])));
   assert.deepEqual(addon.actualByRow.orders, { week1: 0, week2: 0, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.orderAmount, { week1: 0, week2: 0, week3: 0, week4: 0 });
   assert.deepEqual(existing.values, existingSnapshot, 'add-on calculation must not mutate existing dashboard KPIs');
@@ -61,8 +62,8 @@ test('Q4/Q5 use Check-In rows with Joint Working YES and Secondary sales type; Q
   ];
   const prepared = prepareQ1Q3ReportRows(records);
   const q1Q3 = calculateQ1Q3Reports(prepared, '2026-10');
-  const managerKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10');
-  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3, null, managerKpi);
+  const territoryKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10', { includeTerritory: true });
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3, null, territoryKpi);
 
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.orders, { week1: 2, week2: 4, week3: 0, week4: 0 });
