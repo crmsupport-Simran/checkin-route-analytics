@@ -14,10 +14,10 @@ export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
 export const WEEKLY_SALES_PERFORMANCE_STORAGE_KEY = 'weekly-sales-performance-manual-actuals-v1';
 export const WEEKLY_SALES_PLAN_STORAGE_KEY = 'weekly-sales-performance-plan-overrides-v1';
 export const WEEKLY_SALES_PERFORMANCE_WEEKS = Object.freeze([
-  { key: 'week1', label: 'WEEK-1 (1–8)' },
-  { key: 'week2', label: 'WEEK-2 (9–16)' },
-  { key: 'week3', label: 'WEEK-3 (17–24)' },
-  { key: 'week4', label: 'WEEK-4 (25–month end)' },
+  { key: 'week1', label: 'WEEK-1 (1–7)' },
+  { key: 'week2', label: 'WEEK-2 (8–15)' },
+  { key: 'week3', label: 'WEEK-3 (16–23)' },
+  { key: 'week4', label: 'WEEK-4 (24–month end)' },
 ]);
 
 const normalize = (value) => String(value ?? '').trim().replace(/\s+/g, ' ').toLocaleUpperCase();
@@ -30,9 +30,9 @@ export function getWeeklySalesPerformanceBucket(dateKey, selectedMonth) {
   const day = Number(match[2]);
   const lastDay = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5, 7)), 0).getDate();
   if (day < 1 || day > lastDay) return null;
-  if (day <= 8) return 'week1';
-  if (day <= 16) return 'week2';
-  if (day <= 24) return 'week3';
+  if (day <= 7) return 'week1';
+  if (day <= 15) return 'week2';
+  if (day <= 23) return 'week3';
   return 'week4';
 }
 

@@ -9,8 +9,8 @@ const row = (date, extra = {}) => ({
   ...extra,
 });
 
-test('add-on weekly buckets use 1–8, 9–16, 17–24 and 25–month-end, including short months', () => {
-  assert.deepEqual(['01','08','09','16','17','24','25','31'].map((day) => getWeeklySalesPerformanceBucket(`2026-10-${day}`, '2026-10')), ['week1','week1','week2','week2','week3','week3','week4','week4']);
+test('weekly sales buckets use 1–7, 8–15, 16–23 and 24–month-end, including short months', () => {
+  assert.deepEqual(['01','07','08','15','16','23','24','31'].map((day) => getWeeklySalesPerformanceBucket(`2026-10-${day}`, '2026-10')), ['week1','week1','week2','week2','week3','week3','week4','week4']);
   assert.equal(getWeeklySalesPerformanceBucket('2026-02-28', '2026-02'), 'week4');
   assert.equal(getWeeklySalesPerformanceBucket('2026-10-01', '2026-09'), null);
 });
@@ -29,9 +29,9 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   const existing = calculateQ1Q3Reports(prepared, '2026-10');
   const existingSnapshot = structuredClone(existing.values);
   const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing);
-  assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 1, week3: 0, week4: 1 });
-  assert.deepEqual(addon.actualByRow.jointDays, { week1: 2, week2: 1, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 3, week2: 1, week3: 0, week4: 1 });
+  assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 1 });
+  assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
   assert.deepEqual(existing.values, existingSnapshot, 'add-on calculation must not mutate existing dashboard KPIs');
   const exported = buildWeeklySalesPerformanceExportRows(addon, { averageOrderValue: { week2: '10000' } });
   assert.equal(exported[1][1], 55);
