@@ -21,11 +21,13 @@ const JUNIOR_DESIGNATIONS = new Set([
   'BUSINESS DEVELOPMENT OFFICER', 'BUSINESS DEVELOPMENT OFFICER (4)',
   'SR. EXECUTIVE-SALES', 'SR. EXECUTIVE-SALES (4)',
 ]);
-const Q1_Q2_SENIOR_DESIGNATIONS = new Set([
+const Q1_Q2_MANAGER_DESIGNATIONS = new Set([
   'GM - SALES', 'DGM-SALES', 'AGM-SALES', 'SR.MANAGER-SALES (9)',
   'MANAGER-SALES', 'MANAGER-SALES (4)', 'DEPUTY MANAGER-SALES', 'DEPUTY MANAGER-SALES (4)',
   'ASSISTANT MANAGER-SALES', 'ASSISTANT MANAGER-SALES (4)', 'ASSISTANT MANAGER-SALES (NBD)',
   'ASSISTANT MANAGER-SALES (NBD) (4)', 'SR. ASSISTANT MANAGER-SALES',
+]);
+const TERRITORY_DESIGNATIONS = new Set([
   'SR. TERRITORY SALES INCHARGE (4)', 'TERRITORY SALES INCHARGE', 'TERRITORY SALES INCHARGE (4)',
   'TERRITORY SALES MANAGER', 'TERRITORY SALES MANAGER (4)', 'TERRITORY SALES OFFICER',
   'TERRITORY SALES OFFICER (4)', 'TERRITORY SALES OFFICER (NBD) (4)',
@@ -113,7 +115,15 @@ export function prepareJointWorkingRows(records = []) {
   return { rows, rowsByMonth, months: [...months].sort() };
 }
 
-export function calculateJointWorkingKpis(prepared, month) {
+export function calculateJointWorkingKpis(prepared, month, { includeTerritory = false } = {}) {
+  // The original dashboard stays manager-only. The copy below it opts into
+  // the separate territory designation set without changing the Q1/Q2/Q3 rules.
+  const q1Q2Designations = includeTerritory
+    ? new Set([...Q1_Q2_MANAGER_DESIGNATIONS, ...TERRITORY_DESIGNATIONS])
+    : Q1_Q2_MANAGER_DESIGNATIONS;
+  const q3Designations = includeTerritory
+    ? new Set([...SENIOR_DESIGNATIONS, ...TERRITORY_DESIGNATIONS])
+    : SENIOR_DESIGNATIONS;
   const buckets = getKpiBuckets(month);
   const [year, monthNumber] = month.split('-').map(Number);
   const daysInMonth = new Date(year, monthNumber, 0).getDate();
@@ -173,7 +183,7 @@ export function calculateJointWorkingKpis(prepared, month) {
     // Q1/Q2 roles come from the source row: Designation belongs to Sales User
     // (Manager), while Joint Working Designation belongs to Joint Working Name
     // (Executive/BDO).
-    const isManagerByDesignation = hasApprovedDesignation(row.designation, Q1_Q2_SENIOR_DESIGNATIONS);
+    const isManagerByDesignation = hasApprovedDesignation(row.designation, q1Q2Designations);
     const isBdoByJointDesignation = hasApprovedDesignation(row.jointWorkingDesignation, JUNIOR_DESIGNATIONS);
     const hasJointPartnerName = Boolean(row.seniorName);
     const isQualifyingJointWork = isManagerByDesignation && row.jointWorking === 'YES' && isBdoByJointDesignation && hasJointPartnerName;
@@ -244,7 +254,7 @@ export function calculateJointWorkingKpis(prepared, month) {
         else q2Other += 1;
       }
     }
-    if (SENIOR_DESIGNATIONS.has(row.designation) && row.type === 'CHANNEL PARTNER') {
+    if (q3Designations.has(row.designation) && row.type === 'CHANNEL PARTNER') {
       q3QualifyingRows += 1;
       if (row.distributor) for (const bucket of matchingBuckets) {
         q3Sets[bucket.key].add(row.distributor);

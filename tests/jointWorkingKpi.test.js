@@ -86,3 +86,22 @@ test('existing Joint Working KPI retains its pre-dashboard Manager calculation a
   assert.equal(exportRows[1][4], 2);
   assert.equal(exportRows[2][4], 3);
 });
+
+test('territory-inclusive copy adds Territory roles while the original KPI remains manager-only', () => {
+  const records = [
+    { date: '02/10/2026', salesUserName: 'Manager A', empId: '100', designation: 'MANAGER-SALES', jointWorking: 'YES', jointWorkingName: 'Executive A', jointWorkingDesignation: 'EXECUTIVE-SALES', type: 'DEALER', dealerChannelPartnerCode: 'M-CP' },
+    { date: '02/10/2026', salesUserName: 'Manager A', empId: '100', designation: 'MANAGER-SALES', type: 'CHANNEL PARTNER', dealerChannelPartnerCode: 'M-CP' },
+    { date: '02/10/2026', salesUserName: 'Territory Officer', empId: '200', designation: 'TERRITORY SALES OFFICER', jointWorking: 'YES', jointWorkingName: 'Executive B', jointWorkingDesignation: 'EXECUTIVE-SALES (4)', type: 'DEALER', dealerChannelPartnerCode: 'T-CP' },
+    { date: '02/10/2026', salesUserName: 'Territory Officer', empId: '200', designation: 'TERRITORY SALES OFFICER', type: 'CHANNEL PARTNER', dealerChannelPartnerCode: 'T-CP' },
+  ];
+  const prepared = prepareJointWorkingRows(records);
+  const managersOnly = calculateJointWorkingKpis(prepared, '2026-10');
+  const managersAndTerritory = calculateJointWorkingKpis(prepared, '2026-10', { includeTerritory: true });
+
+  assert.equal(managersOnly.values.q1.week1, 1);
+  assert.equal(managersOnly.values.q2.week1, 1);
+  assert.equal(managersOnly.values.q3.week1, 1);
+  assert.equal(managersAndTerritory.values.q1.week1, 2);
+  assert.equal(managersAndTerritory.values.q2.week1, 2);
+  assert.equal(managersAndTerritory.values.q3.week1, 2);
+});

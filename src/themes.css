@@ -192,3 +192,4 @@
 @media(max-width:850px) {
   .appearance-control { flex: 0 0 112px; }
 }
+:root[data-theme="dark"] .joint-kpi-territory-note{color:#b6c6dc}

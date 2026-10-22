@@ -21,39 +21,36 @@ export default function JointWorkingKpi({ report }) {
   const buckets = useMemo(() => getKpiBuckets(selectedMonth), [selectedMonth]);
   const secondHalfLabel = buckets.find((bucket) => bucket.key === 'secondHalf')?.label || '16-end-of-month';
   const result = useMemo(() => selectedMonth ? calculateJointWorkingKpis(prepared, selectedMonth) : null, [prepared, selectedMonth]);
+  const territoryResult = useMemo(() => selectedMonth ? calculateJointWorkingKpis(prepared, selectedMonth, { includeTerritory: true }) : null, [prepared, selectedMonth]);
   const [showDetails, setShowDetails] = useState(false);
   useEffect(() => {
     if (result) console.info('[Joint Working KPI] Selected-month raw calculation audit', { selectedMonth, ...result.details });
   }, [result, selectedMonth]);
 
-  const exportCsv = () => {
-    if (!result) return;
-    const rows = getJointWorkingKpiExportRows(result, monthLabel(selectedMonth));
+  const downloadCsv = (rows, filename) => {
     const csv = rows.map((row) => row.map(csvValue).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `joint-working-kpi-${selectedMonth}.csv`;
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportQuestionData = (question) => {
-    if (!result) return;
-    const rows = getJointWorkingKpiDetailExportRows(result, question, monthLabel(selectedMonth));
-    const csv = rows.map((row) => row.map(csvValue).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `joint-working-${question}-details-${selectedMonth}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const exportCsv = (source = result, suffix = '') => {
+    if (!source) return;
+    downloadCsv(getJointWorkingKpiExportRows(source, monthLabel(selectedMonth)), `joint-working-kpi${suffix}-${selectedMonth}.csv`);
+  };
+
+  const exportQuestionData = (question, source = result, suffix = '') => {
+    if (!source) return;
+    downloadCsv(getJointWorkingKpiDetailExportRows(source, question, monthLabel(selectedMonth)), `joint-working-${question}${suffix}-details-${selectedMonth}.csv`);
   };
 
   return <main className="joint-kpi">
     <section className="joint-kpi-heading">
       <div><span className="eyebrow">CHECK-IN REPORT · JOINT WORKING</span><h2>JOINT WORKING KPI DASHBOARD</h2><p>Calculated from the currently loaded Check-In report.</p></div>
-      <div className="joint-kpi-controls"><div><label htmlFor="joint-kpi-month">Month</label><select id="joint-kpi-month" value={selectedMonth} disabled={!months.length} onChange={(event) => setMonthOverride(event.target.value)}>{months.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></div><button className="secondary" disabled={!result} onClick={exportCsv}>Export Joint Working KPI</button></div>
+      <div className="joint-kpi-controls"><div><label htmlFor="joint-kpi-month">Month</label><select id="joint-kpi-month" value={selectedMonth} disabled={!months.length} onChange={(event) => setMonthOverride(event.target.value)}>{months.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></div><button className="secondary" disabled={!result} onClick={() => exportCsv()}>Export Joint Working KPI</button></div>
     </section>
     {!report && <section className="card joint-kpi-empty"><h3>Upload a Check-In Report to view this dashboard</h3><p>This report automatically uses the same Check-In data as the main dashboard.</p></section>}
     {report && !months.length && <section className="card joint-kpi-empty"><h3>No valid visit dates found</h3><p>Upload a Check-In file with dates in the Date column.</p></section>}
@@ -63,6 +60,11 @@ export default function JointWorkingKpi({ report }) {
         <tr><th className="q-cell">Q.2</th><th className="metric-cell">NO. OF RETAILER VISITED, BDO WITH SENIOR SALES PERSON</th>{buckets.map(({ key }) => <td key={key}>{result.values.q2[key].toLocaleString()}</td>)}</tr>
         <tr><th className="q-cell">Q.3</th><th className="metric-cell">NO. OF DISTRIBUTOR VISITED, PHYSICALLY BY SENIOR PERSON (UNIQUE NUMBER)</th>{buckets.map(({ key }) => <td key={key}>{result.values.q3[key].toLocaleString()}</td>)}</tr>
       </tbody></table></div></section>
+      <section className="card joint-kpi-table-wrap joint-kpi-territory-copy"><div className="joint-kpi-title">JOINT WORKING KPI DASHBOARD · MANAGER + TERRITORY DESIGNATIONS <span>{monthLabel(selectedMonth)}</span></div><p className="joint-kpi-territory-note">Same Q.1–Q.3 calculations and exclusions as the dashboard above, with Territory Sales designations included in this additional report.</p><div className="table-scroll joint-kpi-scroll"><table className="joint-kpi-table"><thead><tr><th className="q-cell" aria-label="Question"/><th className="metric-cell">Metric</th>{buckets.map((bucket) => <th key={bucket.key} className={`${bucket.key === 'firstHalf' || bucket.key === 'secondHalf' ? 'half-cell' : ''}`}>{bucket.label}</th>)}</tr></thead><tbody>
+        <tr><th className="q-cell">Q.1</th><th className="metric-cell">TOTAL NO. OF VISIT DAYS OF JOINT WORKING (BDO WITH SENIOR PERSON)</th>{buckets.map(({ key }) => <td key={key}>{territoryResult.values.q1[key].toLocaleString()}</td>)}</tr>
+        <tr><th className="q-cell">Q.2</th><th className="metric-cell">NO. OF RETAILER VISITED, BDO WITH SENIOR SALES PERSON</th>{buckets.map(({ key }) => <td key={key}>{territoryResult.values.q2[key].toLocaleString()}</td>)}</tr>
+        <tr><th className="q-cell">Q.3</th><th className="metric-cell">NO. OF DISTRIBUTOR VISITED, PHYSICALLY BY SENIOR PERSON (UNIQUE NUMBER)</th>{buckets.map(({ key }) => <td key={key}>{territoryResult.values.q3[key].toLocaleString()}</td>)}</tr>
+      </tbody></table></div><div className="joint-kpi-question-exports"><button className="secondary" onClick={() => exportCsv(territoryResult, '-manager-territory')}>Export Manager + Territory KPI</button>{['q1', 'q2', 'q3'].map((question) => <button className="secondary" key={question} onClick={() => exportQuestionData(question, territoryResult, '-manager-territory')}>Download {question.toUpperCase()} details</button>)}</div></section>
       <section className="joint-kpi-detail-toggle"><button className="secondary" aria-expanded={showDetails} onClick={() => setShowDetails((value) => !value)}>{showDetails ? 'Hide Calculation Details' : 'View Calculation Details'}</button></section>
       <section className="joint-kpi-question-exports" aria-label="Download supporting data by question">
         <span>Download supporting data:</span>
