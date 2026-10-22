@@ -1,11 +1,13 @@
-import { parseAttendanceBuffer, parseDealersBuffer } from './supplementalParser';
+import { parseAttendanceBuffer, parseDealersBuffer, parseSecondaryOrdersBuffer } from './supplementalParser';
 
 self.onmessage = ({ data }) => {
   try {
     self.postMessage({ stage: 'Parsing workbook…', progress: 40 });
     const result = data.kind === 'dealers'
       ? parseDealersBuffer(data.fileBuffer)
-      : parseAttendanceBuffer(data.fileBuffer);
+      : data.kind === 'secondary-orders'
+        ? parseSecondaryOrdersBuffer(data.fileBuffer)
+        : parseAttendanceBuffer(data.fileBuffer);
     self.postMessage({ stage: 'Building search indexes…', progress: 90 });
     self.postMessage({ result });
   } catch (error) {

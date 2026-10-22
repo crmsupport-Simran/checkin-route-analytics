@@ -7,6 +7,7 @@ import TourPlan from './components/TourPlan';
 import JointWorkingKpi from './components/JointWorkingKpi';
 import EmployeeTourPlanReport from './components/EmployeeTourPlanReport';
 import Q1Q3ReportsDashboard from './components/Q1Q3ReportsDashboard';
+import WeeklySalesPerformanceDashboard from './components/WeeklySalesPerformanceDashboard';
 import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
 
@@ -28,17 +29,18 @@ export default function App() {
   const [integrity, setIntegrity] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [dealers, setDealers] = useState(null);
+  const [secondaryOrders, setSecondaryOrders] = useState(null);
   const [view, setView] = useState('dashboard');
   const [filters, setFilters] = useState(emptyFilters);
   const [loading, setLoading] = useState(false);
-  const [supplementalLoading, setSupplementalLoading] = useState({ attendance: false, dealers: false });
-  const [supplementalProgress, setSupplementalProgress] = useState({ attendance: null, dealers: null });
+  const [supplementalLoading, setSupplementalLoading] = useState({ attendance: false, dealers: false, 'secondary-orders': false });
+  const [supplementalProgress, setSupplementalProgress] = useState({ attendance: null, dealers: null, 'secondary-orders': null });
   const [progress, setProgress] = useState({ stage: '', progress: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const uploadId = useRef(0);
   const reportFile = useRef(null);
-  const supplementalFiles = useRef({ attendance: null, dealers: null });
+  const supplementalFiles = useRef({ attendance: null, dealers: null, 'secondary-orders': null });
 
   useEffect(() => {
     const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -80,8 +82,10 @@ export default function App() {
     setSupplementalProgress((current) => ({ ...current, [kind]: { stage: 'Reading file…', progress: 0 } }));
     try {
       const parsed = await parseSupplemental(file, kind, (next) => setSupplementalProgress((current) => ({ ...current, [kind]: next })));
-      if (kind === 'attendance') setAttendance(parsed);
-      else setDealers(parsed);
+      const loaded = { ...parsed, fileName: file.name };
+      if (kind === 'attendance') setAttendance(loaded);
+      else if (kind === 'dealers') setDealers(loaded);
+      else setSecondaryOrders(loaded);
     } catch (exception) {
       setError(exception.message || 'The supplemental file could not be read.');
     } finally {
@@ -97,6 +101,7 @@ export default function App() {
       if (reportFile.current) refreshes.push(handleReport(reportFile.current, { keepCurrent: true }));
       if (supplementalFiles.current.attendance) refreshes.push(loadSupplemental(supplementalFiles.current.attendance, 'attendance'));
       if (supplementalFiles.current.dealers) refreshes.push(loadSupplemental(supplementalFiles.current.dealers, 'dealers'));
+      if (supplementalFiles.current['secondary-orders']) refreshes.push(loadSupplemental(supplementalFiles.current['secondary-orders'], 'secondary-orders'));
       await Promise.all(refreshes);
     } finally {
       setRefreshing(false);
@@ -113,6 +118,7 @@ export default function App() {
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
         <button className={view === 'q1-q3-reports' ? 'active' : ''} onClick={() => setView('q1-q3-reports')}>Q1–Q2 Reports</button>
+        <button className={view === 'weekly-sales' ? 'active' : ''} onClick={() => setView('weekly-sales')}>Weekly Sales Performance</button>
         <button className={view === 'employee-tour' ? 'active' : ''} onClick={() => setView('employee-tour')}>Employee Tour Plan</button>
         <label className="appearance-control">Appearance
           <select aria-label="Appearance" value={appearance} onChange={(event) => setAppearance(event.target.value)}>
@@ -121,7 +127,7 @@ export default function App() {
             <option value="system">System</option>
           </select>
         </label>
-        <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers)} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
+        <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers && !supplementalFiles.current['secondary-orders'])} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
       </nav>
     </div></header>
     <div className="container">
@@ -131,6 +137,7 @@ export default function App() {
       {view === 'tour' && <TourPlan dealers={dealers} report={report} attendance={attendance}/>}
       {view === 'joint-working' && <JointWorkingKpi report={report}/>}
       {view === 'q1-q3-reports' && <Q1Q3ReportsDashboard report={report}/>}
+      {view === 'weekly-sales' && <WeeklySalesPerformanceDashboard report={report} secondaryOrders={secondaryOrders} loading={supplementalLoading['secondary-orders']} progress={supplementalProgress['secondary-orders']} onSecondaryOrderFile={(file) => loadSupplemental(file, 'secondary-orders')}/>}
       {view === 'employee-tour' && <EmployeeTourPlanReport report={report} attendance={attendance} dealers={dealers}/>}
       {report && view === 'dashboard' && <>
         <FilterPanel indexes={report.indexes} filters={filters} setFilters={setFilters} clear={() => setFilters(emptyFilters)}/>

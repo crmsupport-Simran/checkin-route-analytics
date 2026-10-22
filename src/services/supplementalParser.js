@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { coordinate } from '../utils/coordinateUtils';
+import { coordinate } from '../utils/coordinateUtils.js';
 
 const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (value) => Number(String(value ?? '').replace(/[^0-9.-]/g, '')) || 0;
@@ -8,7 +8,7 @@ const validPoint = (lat, lng) => coordinate(lat, lng);
 const employeeAssignments = (value) => [...String(value || '').matchAll(/([^,;]+?)\s*\(\s*(?:app\s*)?(\d+)\s*\)/gi)].map((match) => ({ id: match[2], name: text(match[1]) }));
 const employeeIds = (value) => [...new Set([...employeeAssignments(value).map((item) => item.id), ...[...String(value || '').matchAll(/\((?:app\s*)?(\d+)\)|\b(\d{2,})\b/gi)].map((match) => match[1] || match[2])])];
 function headerGetter(row, columns) { return (...names) => { for (const name of names) { const key = columns[normalize(name)]; if (key) return row[key] ?? ''; } return ''; }; }
-function dateValue(value) { if (value instanceof Date) return value; if (typeof value === 'number') { const parts = XLSX.SSF.parse_date_code(value); return parts ? new Date(parts.y, parts.m - 1, parts.d, parts.H, parts.M, Math.floor(parts.S)) : null; } const valueText = text(value); const match = valueText.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/); if (match) return new Date(Number(match[3].length === 2 ? `20${match[3]}` : match[3]), Number(match[2]) - 1, Number(match[1]), Number(match[4] || 0), Number(match[5] || 0), Number(match[6] || 0)); const date = new Date(valueText); return Number.isNaN(date.getTime()) ? null : date; }
+function dateValue(value) { if (value instanceof Date) return value; if (typeof value === 'number') { const parts = XLSX.SSF.parse_date_code(value); return parts ? new Date(parts.y, parts.m - 1, parts.d, parts.H, parts.M, Math.floor(parts.S)) : null; } const valueText = text(value); const iso = valueText.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/); if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4] || 0), Number(iso[5] || 0), Number(iso[6] || 0)); const match = valueText.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/); if (match) return new Date(Number(match[3].length === 2 ? `20${match[3]}` : match[3]), Number(match[2]) - 1, Number(match[1]), Number(match[4] || 0), Number(match[5] || 0), Number(match[6] || 0)); const date = new Date(valueText); return Number.isNaN(date.getTime()) ? null : date; }
 const dateKey = (date) => date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '';
 const dateText = (value) => { if (value == null || value === '' || value === 0 || value === '0') return ''; const date = dateValue(value); return date ? `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}` : text(value); };
 
@@ -37,4 +37,33 @@ export function parseDealersBuffer(fileBuffer) {
   let validGps = 0; let unassigned = 0;
   dealers.forEach((dealer) => { if (dealer.point) validGps++; if (!dealer.assignedEmpIds.length) unassigned++; dealer.assignedEmpIds.forEach((id) => add(byEmployeeId, id, dealer)); add(byAccountCode, dealer.accountCode, dealer); add(byCity, dealer.city.toLowerCase(), dealer); add(byState, dealer.state.toLowerCase(), dealer); add(byBeat, dealer.beat.toLowerCase(), dealer); });
   return { sheetName, dealers, indexes: { byEmployeeId, byAccountCode, byCity, byState, byBeat }, stats: { total: dealers.length, validGps, missingGps: dealers.length - validGps, assignedEmployees: Object.keys(byEmployeeId).length, unassigned } };
+}
+
+export function parseSecondaryOrdersBuffer(fileBuffer) {
+  const { sheetName, rows, columns } = rowsFromBuffer(fileBuffer, 'Secondary Sales Report');
+  if (!rows.length) throw new Error('The secondary order report has no data rows.');
+  const hasColumn = (...names) => names.some((name) => columns[normalize(name)]);
+  if (!hasColumn('Basic Amount')) throw new Error('The secondary order report must include a “Basic Amount” column. Q.5 uses this field only.');
+  if (!hasColumn('Order Date', 'Date', 'Invoice Date', 'Secondary Order Date')) throw new Error('The secondary order report must include an Order Date or Date column to assign weekly buckets.');
+  const records = rows.map((row, index) => {
+    const get = headerGetter(row, columns);
+    const firstNonblank = (...names) => names.map((name) => get(name)).find((value) => text(value) !== '') ?? '';
+    const rawDate = firstNonblank('Order Date', 'Date', 'Invoice Date', 'Secondary Order Date');
+    const date = dateValue(rawDate);
+    const rawBasicAmount = get('Basic Amount');
+    const amountText = String(rawBasicAmount ?? '').replace(/[^0-9.-]/g, '');
+    const basicAmount = amountText !== '' && Number.isFinite(Number(amountText)) ? Number(amountText) : null;
+    const sourceIndex = index + 2;
+    return {
+      sourceRow: sourceIndex,
+      orderId: text(firstNonblank('Order No', 'Order Number', 'Order ID', 'Sales Order No', 'Sales Order Number', 'SO Number', 'Invoice No', 'Invoice Number')),
+      dateKey: dateKey(date),
+      dateLabel: date ? dateText(date) : text(rawDate),
+      salesUserName: text(firstNonblank('Sales User Name', 'Sales User', 'Employee Name', 'Employee', 'Sales Person', 'Salesperson')),
+      empId: text(firstNonblank('Emp ID', 'Employee ID', 'Employee Code', 'Sales User ID', 'User Code')),
+      basicAmount,
+      rawBasicAmount: text(rawBasicAmount),
+    };
+  });
+  return { sheetName, records, stats: { rows: records.length, validDates: records.filter((row) => row.dateKey).length, validBasicAmounts: records.filter((row) => row.basicAmount !== null).length, uniqueOrders: new Set(records.map((row) => row.orderId).filter(Boolean)).size } };
 }
