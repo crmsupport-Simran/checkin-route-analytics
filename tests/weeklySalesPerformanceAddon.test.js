@@ -22,7 +22,7 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
     row('08/10/2026', { sourceIndex: 1 }),
     row('08/10/2026', { sourceIndex: 2 }), // Q1 one Manager/date; retailer source row remains counted
     row('09/10/2026', { sourceIndex: 3, empId: '200', salesUserName: 'TSO', designation: 'TERRITORY SALES OFFICER' }),
-    row('17/10/2026', { sourceIndex: 4, empId: '300', salesUserName: 'Territory No Joint Working', designation: 'TERRITORY SALES OFFICER', jointWorking: 'NO' }),
+    row('17/10/2026', { sourceIndex: 4, empId: '300', salesUserName: 'Not Senior', designation: 'SALES EXECUTIVE' }),
     row('25/10/2026', { sourceIndex: 5, empId: '400', salesUserName: 'Zonal Team Manager', zonalManager: 'OTHERS' }),
     row('25/10/2026', { sourceIndex: 6, type: 'OTHER' }),
   ];
@@ -32,7 +32,7 @@ test('add-on calculates SSP, eligible joint-working days and qualifying retailer
   const existingSnapshot = structuredClone(existing.values);
   const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, territoryKpi);
   assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 2 });
-  assert.equal(addon.actualByRow.sspMonthUnique, 3, 'monthly SSP counts unique Manager + Territory employees with Joint Working = YES, independent of Q1/Q3 Zonal exclusions and not the sum of weekly distinct counts');
+  assert.equal(addon.actualByRow.sspMonthUnique, 3, 'monthly SSP is the unique Manager + Territory headcount from Check-In, independent of Q1/Q3 Zonal exclusions and not the sum of weekly distinct counts');
   assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.retailersVisited, Object.fromEntries(['week1', 'week2', 'week3', 'week4'].map((week) => [week, territoryKpi.values.q2[week]])));

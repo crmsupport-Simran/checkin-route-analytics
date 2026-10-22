@@ -1,5 +1,5 @@
 export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
-  { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Unique Manager + Territory employees with Joint Working = YES in Check-In report' },
+  { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Unique Manager + Territory employees in Check-In report' },
   { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager + Territory Joint Working KPI' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Secondary Order Count' },
@@ -63,7 +63,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
-    if (!bucket || row.jointWorking !== 'YES' || !SSP_MANAGER_TERRITORY_DESIGNATIONS.has(normalize(row.designation))) continue;
+    if (!bucket || !SSP_MANAGER_TERRITORY_DESIGNATIONS.has(normalize(row.designation))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
     if (identity) {
       ssp[bucket].add(identity);
