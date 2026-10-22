@@ -1,7 +1,5 @@
-import { Q1_Q3_REPORT_DESIGNATION_RULES } from './q1Q3ReportsService.js';
-
 export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
-  { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Distinct eligible Senior Sales Users with Check-In rows' },
+  { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Unique Manager + Territory employees in Check-In report' },
   { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Q1 eligible Manager + date visit-days' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager + Territory Joint Working KPI' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Secondary Order Count' },
@@ -28,8 +26,17 @@ const parseAmount = (value) => {
   const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
 };
-const allowedSenior = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.managerTsoTsiTsm.map(normalize));
-const excludedZonal = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.excludedZonalManagers.map(normalize));
+// SSP is its own Check-In headcount rule. Keep its designation list independent
+// from Q1–Q3 and the Manager-only KPI, and do not apply their Zonal exclusions.
+const SSP_MANAGER_TERRITORY_DESIGNATIONS = new Set([
+  'GM - SALES', 'DGM-SALES', 'AGM-SALES', 'SR.MANAGER-SALES (9)',
+  'MANAGER-SALES', 'MANAGER-SALES (4)', 'DEPUTY MANAGER-SALES', 'DEPUTY MANAGER-SALES (4)',
+  'ASSISTANT MANAGER-SALES', 'ASSISTANT MANAGER-SALES (4)', 'ASSISTANT MANAGER-SALES (NBD)',
+  'ASSISTANT MANAGER-SALES (NBD) (4)', 'SR. ASSISTANT MANAGER-SALES',
+  'SR. TERRITORY SALES INCHARGE (4)', 'TERRITORY SALES INCHARGE', 'TERRITORY SALES INCHARGE (4)',
+  'TERRITORY SALES MANAGER', 'TERRITORY SALES MANAGER (4)', 'TERRITORY SALES OFFICER',
+  'TERRITORY SALES OFFICER (4)', 'TERRITORY SALES OFFICER (NBD) (4)',
+].map(normalize));
 
 export function getWeeklySalesPerformanceBucket(dateKey, selectedMonth) {
   const match = String(dateKey ?? '').match(/^(\d{4}-\d{2})-(\d{2})$/);
@@ -56,7 +63,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
-    if (!bucket || !allowedSenior.has(normalize(row.designation)) || excludedZonal.has(normalize(row.zonalManager))) continue;
+    if (!bucket || !SSP_MANAGER_TERRITORY_DESIGNATIONS.has(normalize(row.designation))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
     if (identity) {
       ssp[bucket].add(identity);
