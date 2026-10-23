@@ -1,0 +1,137 @@
+:root {
+  --crm-navy: #202a49;
+  --crm-navy-deep: #19223d;
+  --crm-blue: #3769d4;
+  --crm-blue-soft: #eef2ff;
+  --crm-green: #079447;
+  --crm-purple: #5545db;
+  --crm-line: #e7ebf2;
+  --crm-page: #f5f7fb;
+}
+
+body { background: var(--crm-page); color: #1e2b43; }
+header {
+  position: fixed;
+  z-index: 1000;
+  inset: 0 auto 0 0;
+  width: 192px;
+  overflow-y: auto;
+  background: var(--crm-navy);
+  border: 0;
+  box-shadow: 3px 0 14px #14213b20;
+}
+header > div.brand {
+  min-height: 100vh;
+  max-width: none;
+  margin: 0;
+  padding: 17px 12px 14px;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 12px;
+}
+.company-logo {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  align-self: center;
+  padding: 5px;
+  background: #fff;
+  border-radius: 12px;
+}
+.brand-divider { width: 100%; height: 1px; flex: 0 0 1px; background: #ffffff24; }
+.brand h1 { color: #fff; font-size: 15px; letter-spacing: -.2px; }
+.brand p { color: #c1cbe0; font-size: 11px; line-height: 1.4; }
+.main-nav {
+  width: 100%;
+  margin: 6px 0 0;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 4px;
+}
+.main-nav button {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  color: #d6deef;
+  text-align: left;
+  font-size: 12px;
+}
+.main-nav button:hover { background: #ffffff12; color: #fff; }
+.main-nav button.active { color: #fff; background: var(--crm-blue); box-shadow: 0 3px 9px #111b3b60; }
+.main-nav .appearance-control { order: 5; width: 100%; margin: 12px 0 0; color: #b9c4da; }
+.main-nav .appearance-control select { width: 100%; min-width: 0; border-color: #ffffff2b; color: #f3f6fc; background: #ffffff12; }
+.main-nav .appearance-control select option { color: #1e2b43; background: #fff; }
+.main-nav .refresh-button { order: 6; width: 100%; color: #fff; background: #ffffff12; border-color: #ffffff2b; text-align: center; }
+.main-nav .refresh-button:hover:not(:disabled) { background: #ffffff20; }
+.container { max-width: 1680px; margin-left: 192px; padding: 26px 26px 48px; }
+.card { border-color: var(--crm-line); border-radius: 12px; box-shadow: 0 3px 12px #1726460b; }
+.eyebrow { color: #456db5; }
+.primary { background: var(--crm-blue); }
+.link { color: var(--crm-blue); }
+select:focus, input:focus, textarea:focus { outline: 2px solid #3769d433; border-color: var(--crm-blue); }
+.dropzone { color: #315fb5; border-color: #a7b9e8; background: #f8f9ff; }
+.dropzone.drag { background: var(--crm-blue-soft); border-color: var(--crm-blue); }
+.q3-kpi-card.q1 { border-top-color: var(--crm-blue); }
+.q3-kpi-card.q2 { border-top-color: var(--crm-purple); }
+.q3-kpi-card.q3 { border-top-color: var(--crm-green); }
+.q3-chart-row i { background: var(--crm-blue); }
+.q3-chart-card:nth-child(2) .q3-chart-row i { background: var(--crm-purple); }
+.q3-chart-card:nth-child(3) .q3-chart-row i { background: var(--crm-green); }
+.joint-kpi-title { color: #fff; background: var(--crm-blue); border-color: #2d59bb; }
+.joint-kpi-table thead th.half-cell { color: #274889; background: #e7edff; }
+.joint-kpi-table .q-cell { color: #314f92; background: #eef2ff; }
+.joint-kpi-table .metric-cell { background: #eef2fa; }
+.joint-kpi-table tbody td:nth-child(5),
+.joint-kpi-table tbody td:nth-child(8) { background: #eef2ff; }
+.weekly-sales-table thead tr:first-child th { background: #e8efff; }
+.weekly-sales-table .weekly-actual th,
+.weekly-sales-table .weekly-actual td { color: #1f2d47; }
+.weekly-sales-table .weekly-plan { color: #4164aa; }
+.weekly-status { color: #4164aa; }
+.integrity-kpi.normal strong,
+.q3-kpi-card.q3 strong { color: var(--crm-green); }
+:root[data-theme="dark"] .joint-kpi-title { color: #fff; background: #315fb9; }
+:root[data-theme="dark"] .joint-kpi-table thead th.half-cell { color: #dce6ff; background: #263b63; }
+:root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(5),
+:root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(8) { background: #203251; }
+:root[data-theme="dark"] .joint-kpi-table .metric-cell { background: #1b2e49; }
+:root[data-theme="dark"] .joint-kpi-table .q-cell { background: #273858; color: #dce6ff; }
+:root[data-theme="dark"] .weekly-sales-table thead tr:first-child th { background: #1b3550; }
+.weekly-sales-report .kpi-plan,
+.plan-value { color: var(--crm-blue); }
+footer { color: #77839a; }
+
+:root[data-theme="dark"] body { background: #121a2b; }
+:root[data-theme="dark"] header { background: var(--crm-navy-deep); }
+:root[data-theme="dark"] .main-nav button.active { background: var(--crm-blue); color: #fff; }
+
+@media (max-width: 1050px) {
+  header { position: relative; width: 100%; height: auto; overflow: visible; }
+  header > div.brand {
+    min-height: 0;
+    max-width: none;
+    padding: 11px 16px;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .company-logo { width: 46px; height: 46px; flex-basis: 46px; align-self: auto; padding: 2px; }
+  .brand-divider { width: 1px; height: 42px; flex: 0 0 1px; }
+  .brand h1 { color: var(--crm-navy); }
+  .brand p { color: #66748c; }
+  .main-nav { width: 100%; margin: 0; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; }
+  .main-nav button { width: auto; flex: 0 0 auto; color: #3f4e68; text-align: center; }
+  .main-nav button.active { color: #fff; }
+  .main-nav .appearance-control { order: 0; width: 112px; flex: 0 0 112px; margin: 0; color: #62708a; }
+  .main-nav .appearance-control select { color: #1e2b43; background: #fff; border-color: #d4ddea; }
+  .main-nav .refresh-button { order: 0; width: auto; }
+  .container { margin-left: auto; padding: 20px 18px 42px; }
+}
+
+@media (max-width: 600px) {
+  header > div.brand { gap: 8px; padding: 9px 11px; }
+  .brand h1 { font-size: 14px; }
+  .brand p { font-size: 10px; }
+  .container { padding: 14px 10px 34px; }
+}
