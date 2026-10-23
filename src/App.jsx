@@ -14,6 +14,15 @@ import { clearLocalReport } from './services/localReportStore';
 
 const emptyFilters = { date: '', user: '', empId: '', manager: '', type: '', search: '' };
 const APPEARANCE_KEY = 'checkin-route-analytics-appearance';
+const WELCOME_DISMISSED_KEY = 'checkin-route-analytics-welcome-dismissed';
+
+function getWelcomeVisibility() {
+  try {
+    return window.sessionStorage.getItem(WELCOME_DISMISSED_KEY) !== '1';
+  } catch {
+    return true;
+  }
+}
 
 function getStoredAppearance() {
   try {
@@ -25,6 +34,7 @@ function getStoredAppearance() {
 }
 
 export default function App() {
+  const [showWelcome, setShowWelcome] = useState(getWelcomeVisibility);
   const [appearance, setAppearance] = useState(getStoredAppearance);
   const [report, setReport] = useState(null);
   const [integrity, setIntegrity] = useState(null);
@@ -42,6 +52,11 @@ export default function App() {
   const reportFile = useRef(null);
   const supplementalFiles = useRef({ attendance: null, dealers: null });
 
+  const enterDashboard = () => {
+    try { window.sessionStorage.setItem(WELCOME_DISMISSED_KEY, '1'); } catch { /* Keep this tab usable when storage is unavailable. */ }
+    setShowWelcome(false);
+  };
+
   useEffect(() => {
     const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
     const applyAppearance = () => {
@@ -58,6 +73,11 @@ export default function App() {
   useEffect(() => {
     clearLocalReport('check-in').catch(() => { /* The dashboard remains usable when local storage is unavailable. */ });
   }, []);
+
+  if (showWelcome) return <main className="welcome-screen">
+    <img className="welcome-artwork" src={`${import.meta.env.BASE_URL}welcome-screen.png`} alt="Check-In Route Analytics" />
+    <button className="welcome-login" onClick={enterDashboard}>Login</button>
+  </main>;
 
   const handleReport = async (file, { keepCurrent = false } = {}) => {
     reportFile.current = file;
