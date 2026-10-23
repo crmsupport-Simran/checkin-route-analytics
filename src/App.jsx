@@ -158,7 +158,7 @@ export default function App() {
         <Dashboard report={report} filters={filters} setFilters={setFilters} attendance={attendance} dealers={dealers}/>
       </>}
       {report && integrity && view === 'integrity' && <IntegrityAnalysis integrity={integrity}/>}
-      <footer>Designed for Pearl Precision Products Pvt. Ltd. by Simrandeep Singh</footer>
+      <footer>Designed for Pearl Precision Products Pvt. Ltd. by Simrandeep Singh · <a href={`${import.meta.env.BASE_URL}Check-In_Route_Analytics_Dashboard_SOP.docx`} download>Download Dashboard SOP</a></footer>
     </div>
   </>;
 }
