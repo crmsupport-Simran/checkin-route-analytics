@@ -20,38 +20,13 @@ function openDatabase() {
   });
 }
 
-export async function saveLocalReport(key, file) {
+export async function clearLocalReport(key) {
   const database = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, 'readwrite');
-    transaction.objectStore(STORE_NAME).put({
-      blob: file,
-      name: file.name,
-      type: file.type,
-      lastModified: file.lastModified,
-    }, key);
+    transaction.objectStore(STORE_NAME).delete(key);
     transaction.oncomplete = () => { database.close(); resolve(); };
-    transaction.onerror = () => { database.close(); reject(transaction.error || new Error('The report could not be saved in this browser.')); };
-    transaction.onabort = () => { database.close(); reject(transaction.error || new Error('Saving the report in this browser was interrupted.')); };
-  });
-}
-
-export async function loadLocalReport(key) {
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, 'readonly');
-    const request = transaction.objectStore(STORE_NAME).get(key);
-    request.onsuccess = () => {
-      const stored = request.result;
-      if (!stored?.blob) return;
-      resolve(new File([stored.blob], stored.name || 'Check-In report', {
-        type: stored.type || stored.blob.type || 'application/octet-stream',
-        lastModified: stored.lastModified || Date.now(),
-      }));
-    };
-    request.onerror = () => reject(request.error || new Error('The saved report could not be read.'));
-    transaction.oncomplete = () => { database.close(); if (request.readyState === 'done' && request.result == null) resolve(null); };
-    transaction.onerror = () => { database.close(); reject(transaction.error || new Error('The saved report could not be read.')); };
-    transaction.onabort = () => { database.close(); reject(transaction.error || new Error('Reading the saved report was interrupted.')); };
+    transaction.onerror = () => { database.close(); reject(transaction.error || new Error('The previous uploaded report could not be cleared.')); };
+    transaction.onabort = () => { database.close(); reject(transaction.error || new Error('Clearing the previous uploaded report was interrupted.')); };
   });
 }
