@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { getKpiBuckets } from '../services/jointWorkingKpi';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../services/q1Q3ReportsService';
-import ManagerExecutiveQ1Dashboard from './ManagerExecutiveQ1Dashboard';
-import { calculateManagerExecutiveQ1, prepareManagerExecutiveQ1Rows } from '../services/managerExecutiveQ1Service';
 import { csvValue } from '../utils/formatUtils';
 
 const monthLabel = (key) => {
@@ -47,8 +45,6 @@ export default function Q1Q3ReportsDashboard({ report }) {
   const buckets = useMemo(() => getKpiBuckets(month), [month]);
   const weeks = buckets.filter(({ key }) => key.startsWith('week'));
   const result = useMemo(() => month ? calculateQ1Q3Reports(prepared, month) : null, [prepared, month]);
-  const managerOnlyPrepared = useMemo(() => prepareManagerExecutiveQ1Rows(report?.records || []), [report]);
-  const managerOnlyResult = useMemo(() => month ? calculateManagerExecutiveQ1(managerOnlyPrepared, month) : null, [managerOnlyPrepared, month]);
   const q1Rows = result?.details.q1SourceRows || [];
   const q1VisitDayRows = result ? weeks.flatMap((bucket) =>
     result.details.q1ManagerSummariesByBucket[bucket.key].flatMap((manager) => manager.dates.split(', ').filter(Boolean).map((date) => ({ date, bucket: bucket.label, employee: manager.manager, empId: manager.empId }))))
@@ -136,8 +132,6 @@ export default function Q1Q3ReportsDashboard({ report }) {
         <details><summary>Row-level data quality flags · {result.details.dataQualityAudit.length.toLocaleString()} records</summary><AuditTable title="Identity, Joint Working and distributor data quality" rows={result.details.dataQualityAudit} columns={[{ key: 'sourceRow', label: 'Source Row' }, { key: 'date', label: 'Date' }, { key: 'employee', label: 'Sales User' }, { key: 'empId', label: 'Emp ID' }, { key: 'designation', label: 'Designation' }, { key: 'jointWorkingDesignation', label: 'Joint Working Designation' }, { key: 'jointWorking', label: 'Joint Working' }, { key: 'jointWorkingName', label: 'Joint Working Name' }, { key: 'type', label: 'Type' }, { key: 'issue', label: 'Finding' }]} /></details>
         <details><summary>Date quality audit · {result.details.invalidDateRows.length.toLocaleString()} rows with blank or invalid Date</summary><AuditTable title="Invalid or blank source dates" rows={result.details.invalidDateRows} columns={[{ key: 'sourceRow', label: 'Source Row' }, { key: 'rawDate', label: 'Raw Date' }, { key: 'employee', label: 'Sales User' }, { key: 'empId', label: 'Emp ID' }, { key: 'reason', label: 'Reason' }]} /></details>
       </section>
-      <section className="card q3-bucket-card"><div className="q3-section-title"><div><span className="eyebrow">EXISTING KPI · MANAGER-ONLY SCOPE</span><h3>Separate Manager Joint Working Q.1 / Q.2 dashboard</h3></div><small>Its approved Manager-only rules and outputs stay independent of the Q1–Q2 reports above.</small></div></section>
-      <ManagerExecutiveQ1Dashboard report={report} month={month} preparedReport={managerOnlyPrepared} calculatedResult={managerOnlyResult}/>
     </>}
   </main>;
 }

@@ -78,26 +78,29 @@ select:focus, input:focus, textarea:focus { outline: 2px solid #3769d433; border
 .q3-chart-row i { background: var(--crm-blue); }
 .q3-chart-card:nth-child(2) .q3-chart-row i { background: var(--crm-purple); }
 .q3-chart-card:nth-child(3) .q3-chart-row i { background: var(--crm-green); }
-.joint-kpi-title { color: #fff; background: var(--crm-blue); border-color: #2d59bb; }
-.joint-kpi-table thead th.half-cell { color: #274889; background: #e7edff; }
-.joint-kpi-table .q-cell { color: #314f92; background: #eef2ff; }
-.joint-kpi-table .metric-cell { background: #eef2fa; }
+.joint-kpi-heading h2 { color: #1e2b43; }
+.joint-kpi-title { color: #4d2e09; background: #f5a623; border-color: #b6c5d8; }
+.joint-kpi-table thead th.half-cell { color: #23485e; background: #a8eff4; }
+.joint-kpi-table .q-cell { color: #493b00; background: #fff1ad; }
+.joint-kpi-table .metric-cell { background: #dceeff; }
 .joint-kpi-table tbody td:nth-child(5),
-.joint-kpi-table tbody td:nth-child(8) { background: #eef2ff; }
-.weekly-sales-table thead tr:first-child th { background: #e8efff; }
-.weekly-sales-table .weekly-actual th,
-.weekly-sales-table .weekly-actual td { color: #1f2d47; }
-.weekly-sales-table .weekly-plan { color: #4164aa; }
-.weekly-status { color: #4164aa; }
+.joint-kpi-table tbody td:nth-child(8) { background: #d4f7fa; }
+.weekly-sales-dashboard .joint-kpi-heading h2 { color: #1e2b43; }
+.weekly-sales-table thead th { background: #eadde4; color: #34303a; }
+.weekly-sales-table tbody td.weekly-actual { color: #1f2d24; background: #8fcf4f; }
+.weekly-sales-table tbody td.weekly-actual .weekly-status { color: #31561d; }
+.weekly-sales-table tbody td.weekly-actual input { color: #1f2d24; }
+.weekly-sales-table .weekly-plan { color: #4164aa; background: #fff; }
 .integrity-kpi.normal strong,
 .q3-kpi-card.q3 strong { color: var(--crm-green); }
-:root[data-theme="dark"] .joint-kpi-title { color: #fff; background: #315fb9; }
-:root[data-theme="dark"] .joint-kpi-table thead th.half-cell { color: #dce6ff; background: #263b63; }
+:root[data-theme="dark"] .joint-kpi-title { color: #4d2e09; background: #f5a623; }
+:root[data-theme="dark"] .joint-kpi-table thead th.half-cell { color: #23485e; background: #a8eff4; }
 :root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(5),
-:root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(8) { background: #203251; }
-:root[data-theme="dark"] .joint-kpi-table .metric-cell { background: #1b2e49; }
-:root[data-theme="dark"] .joint-kpi-table .q-cell { background: #273858; color: #dce6ff; }
-:root[data-theme="dark"] .weekly-sales-table thead tr:first-child th { background: #1b3550; }
+:root[data-theme="dark"] .joint-kpi-table tbody td:nth-child(8) { background: #1c3a42; }
+:root[data-theme="dark"] .joint-kpi-table .metric-cell { background: #1b3550; }
+:root[data-theme="dark"] .joint-kpi-table .q-cell { background: #3b351d; color: #ffe8a3; }
+:root[data-theme="dark"] .weekly-sales-table thead th { color: #34303a; background: #eadde4; }
+:root[data-theme="dark"] .weekly-sales-table tbody td.weekly-actual { color: #1f2d24; background: #8fcf4f; }
 .weekly-sales-report .kpi-plan,
 .plan-value { color: var(--crm-blue); }
 footer { color: #77839a; }

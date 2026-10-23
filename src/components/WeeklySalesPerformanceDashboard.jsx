@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../services/jointWorkingKpi';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../services/q1Q3ReportsService';
@@ -26,18 +26,16 @@ const downloadCsv = (rows, name) => {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 
-export default function WeeklySalesPerformanceDashboard({ report, secondaryOrders, loading, progress, onSecondaryOrderFile }) {
-  const input = useRef(null);
+export default function WeeklySalesPerformanceDashboard({ report }) {
   const prepared = useMemo(() => prepareQ1Q3ReportRows(report?.records || []), [report]);
   const managerKpiPrepared = useMemo(() => prepareJointWorkingRows(report?.records || []), [report]);
-  const orderMonths = (secondaryOrders?.records || []).map(({ dateKey }) => dateKey?.slice(0, 7)).filter(Boolean);
-  const months = [...new Set([...prepared.months, ...orderMonths])].sort();
+  const months = prepared.months;
   const [monthOverride, setMonthOverride] = useState('');
   const [manualActuals, setManualActuals] = useState(() => readManualActuals());
   const [planOverrides, setPlanOverrides] = useState(() => readWeeklySalesPlanOverrides());
   const [editingPlans, setEditingPlans] = useState(false);
   const [planDraft, setPlanDraft] = useState({});
-  useEffect(() => setMonthOverride(''), [report, secondaryOrders]);
+  useEffect(() => setMonthOverride(''), [report]);
   useEffect(() => {
     try { localStorage.setItem(WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, JSON.stringify(manualActuals)); } catch { /* Browser storage can be disabled. */ }
   }, [manualActuals]);
@@ -47,7 +45,7 @@ export default function WeeklySalesPerformanceDashboard({ report, secondaryOrder
   const month = months.includes(monthOverride) ? monthOverride : (months.at(-1) || '');
   const existingResult = useMemo(() => report && month ? calculateQ1Q3Reports(prepared, month) : null, [report, prepared, month]);
   const territoryKpiResult = useMemo(() => report && month ? calculateJointWorkingKpis(managerKpiPrepared, month, { includeTerritory: true }) : null, [report, managerKpiPrepared, month]);
-  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders, territoryKpiResult) : null, [prepared, month, existingResult, secondaryOrders, territoryKpiResult]);
+  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, null, territoryKpiResult) : null, [prepared, month, existingResult, territoryKpiResult]);
   const monthManualActuals = manualActuals[month] || {};
   const monthPlans = planOverrides[month] || {};
   const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans), [addon, monthManualActuals, monthPlans]);
@@ -77,10 +75,6 @@ export default function WeeklySalesPerformanceDashboard({ report, secondaryOrder
   const exportWorkbook = () => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(exportRows), 'Weekly Sales');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-      ['Source Row', 'Order ID', 'Order Date', 'Sales User', 'Emp ID', 'Basic Amount'],
-      ...(secondaryOrders?.records || []).filter((row) => row.dateKey.startsWith(`${month}-`)).map((row) => [row.sourceRow, row.orderId, row.dateLabel, row.salesUserName, row.empId, row.basicAmount ?? 'MISSING BASIC AMOUNT']),
-    ]), 'Secondary Order Audit');
     XLSX.writeFile(workbook, `weekly-sales-performance-${month}.xlsx`);
   };
 
@@ -88,13 +82,7 @@ export default function WeeklySalesPerformanceDashboard({ report, secondaryOrder
     <section className="joint-kpi-heading"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>WEEKLY SALES PERFORMANCE</h2><p>Plan vs actual · Q.4/Q.5 use Check-In Secondary data and Average Order Value is calculated.</p></div>
       <div className="joint-kpi-controls"><div><label htmlFor="weekly-sales-month">Month</label><select id="weekly-sales-month" value={month} onChange={(event) => setMonthOverride(event.target.value)} disabled={!months.length || editingPlans}><option value="" disabled>Select month</option>{months.map((key) => <option key={key} value={key}>{monthLabel(key)}</option>)}</select></div><button className="secondary" disabled={!addon || editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Export CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWorkbook}>Export Excel</button></div>
     </section>
-    <section className="weekly-order-upload card">
-      <div><span className="eyebrow">SECONDARY SALES AUDIT</span><h3>Upload Secondary Order Report</h3><p>The weekly Q.4 and Q.5 actuals below come from the Check-In report’s Joint Working and Secondary fields. This upload remains available as a separate order audit.</p></div>
-      <input ref={input} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(event) => { const file = event.target.files[0]; event.target.value = ''; if (file) onSecondaryOrderFile(file); }}/>
-      <button className="secondary" disabled={loading} onClick={() => input.current?.click()}>{loading ? `${progress?.stage || 'Reading report…'} ${progress?.progress ? `${progress.progress}%` : ''}` : secondaryOrders ? 'Replace secondary report' : 'Choose secondary report'}</button>
-      {secondaryOrders && <div className="weekly-order-file"><b>{secondaryOrders.fileName || 'Secondary report loaded'}</b><span>{secondaryOrders.stats.rows.toLocaleString()} rows · {secondaryOrders.stats.uniqueOrders.toLocaleString()} identified orders · {secondaryOrders.stats.validBasicAmounts.toLocaleString()} Basic order value amounts</span></div>}
-    </section>
-    {!month && <section className="card q3-empty"><h3>Select a month</h3><p>Upload a Check-In report to populate actuals. The secondary order report is an optional audit file.</p></section>}
+    {!month && <section className="card q3-empty"><h3>Select a month</h3><p>Upload a Check-In report to populate actuals.</p></section>}
     {addon && <section className="card q3-bucket-card weekly-sales-addon">
       <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? 'Edit the plan targets below; values save for this month.' : 'Plans are editable per week. Old/new retailer actuals are manual; all other actuals come from the Check-In report.'}</small></div></div>
       <p className="q3-scope-note">Weekly buckets: 1–7, 8–15, 16–23, and 24–month end. Existing Q1–Q3 and Manager-only KPI rules are not changed.</p>
@@ -106,7 +94,7 @@ export default function WeeklySalesPerformanceDashboard({ report, secondaryOrder
           return [<td className="weekly-plan" key={`${week.key}-plan`}>{editingPlans ? <input aria-label={`${row.label} ${week.label} plan`} type="number" min="0" step="any" value={planValue} className={isValidPlanValue(planValue) ? '' : 'invalid'} onChange={(event) => setPlanDraft((current) => ({ ...current, [row.key]: { ...(current[row.key] || {}), [week.key]: event.target.value } }))}/> : Number(planValue).toLocaleString('en-IN')}</td>, <td key={`${week.key}-actual`} className="weekly-actual">{isManual ? <input aria-label={`${row.label} ${week.label} actual`} type="number" min="0" step="any" value={monthManualActuals[row.key]?.[week.key] ?? ''} className={isValidManualActual(monthManualActuals[row.key]?.[week.key] ?? '') ? '' : 'invalid'} onChange={(event) => updateManual(row.key, week.key, event.target.value)} placeholder="Pending"/> : typeof actual === 'string' && !/^\d[\d,.]*$/.test(actual) ? <span className="weekly-status">{actual}</span> : actual}</td>];
         })}</tr>)}</tbody></table></div>
       <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts unique Manager + Territory employee/date pairs with Joint Working = YES, as in the supplied weekly pivot. This row does not apply Q1's additional Joint Working partner or Type filters. “No. of Retailers Visited” uses Q.2 from the Joint Working KPI Dashboard · Manager + Territory Designations, by week. Q4 counts unique Check-In Type IDs with Joint Working = YES and Secondary sales type, with a positive Secondary Order Count or, if that field is absent, positive Basic Order Value. Q5 sums Basic Order Value from qualifying Check-In rows; currency actuals and average order value are rounded up to whole rupees. Average Order Value = Q5 ÷ Q4. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
-      <div className="q3-export-bar"><b>Downloads</b><button className="secondary" disabled={editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Weekly Plan vs Actual CSV</button><button className="secondary" disabled={editingPlans} onClick={exportWorkbook}>Excel workbook + secondary order audit</button></div>
+      <div className="q3-export-bar"><b>Downloads</b><button className="secondary" disabled={editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Weekly Plan vs Actual CSV</button><button className="secondary" disabled={editingPlans} onClick={exportWorkbook}>Weekly Plan vs Actual Excel</button></div>
     </section>}
   </main>;
 }

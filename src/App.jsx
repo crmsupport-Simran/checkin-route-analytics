@@ -30,18 +30,17 @@ export default function App() {
   const [integrity, setIntegrity] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [dealers, setDealers] = useState(null);
-  const [secondaryOrders, setSecondaryOrders] = useState(null);
   const [view, setView] = useState('dashboard');
   const [filters, setFilters] = useState(emptyFilters);
   const [loading, setLoading] = useState(false);
-  const [supplementalLoading, setSupplementalLoading] = useState({ attendance: false, dealers: false, 'secondary-orders': false });
-  const [supplementalProgress, setSupplementalProgress] = useState({ attendance: null, dealers: null, 'secondary-orders': null });
+  const [supplementalLoading, setSupplementalLoading] = useState({ attendance: false, dealers: false });
+  const [supplementalProgress, setSupplementalProgress] = useState({ attendance: null, dealers: null });
   const [progress, setProgress] = useState({ stage: '', progress: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const uploadId = useRef(0);
   const reportFile = useRef(null);
-  const supplementalFiles = useRef({ attendance: null, dealers: null, 'secondary-orders': null });
+  const supplementalFiles = useRef({ attendance: null, dealers: null });
 
   useEffect(() => {
     const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -90,7 +89,6 @@ export default function App() {
       const loaded = { ...parsed, fileName: file.name };
       if (kind === 'attendance') setAttendance(loaded);
       else if (kind === 'dealers') setDealers(loaded);
-      else setSecondaryOrders(loaded);
     } catch (exception) {
       setError(exception.message || 'The supplemental file could not be read.');
     } finally {
@@ -106,7 +104,6 @@ export default function App() {
       if (reportFile.current) refreshes.push(handleReport(reportFile.current, { keepCurrent: true }));
       if (supplementalFiles.current.attendance) refreshes.push(loadSupplemental(supplementalFiles.current.attendance, 'attendance'));
       if (supplementalFiles.current.dealers) refreshes.push(loadSupplemental(supplementalFiles.current.dealers, 'dealers'));
-      if (supplementalFiles.current['secondary-orders']) refreshes.push(loadSupplemental(supplementalFiles.current['secondary-orders'], 'secondary-orders'));
       await Promise.all(refreshes);
     } finally {
       setRefreshing(false);
@@ -132,7 +129,7 @@ export default function App() {
             <option value="system">System</option>
           </select>
         </label>
-        <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers && !supplementalFiles.current['secondary-orders'])} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
+        <button className="refresh-button" onClick={refreshLoadedData} disabled={refreshing || (!reportFile.current && !supplementalFiles.current.attendance && !supplementalFiles.current.dealers)} title="Re-read the currently loaded report files">{refreshing ? 'Refreshing…' : '↻ Refresh Data'}</button>
       </nav>
     </div></header>
     <div className="container">
@@ -142,7 +139,7 @@ export default function App() {
       {view === 'tour' && <TourPlan dealers={dealers} report={report} attendance={attendance}/>}
       {view === 'joint-working' && <JointWorkingKpi report={report}/>}
       {view === 'q1-q3-reports' && <Q1Q3ReportsDashboard report={report}/>}
-      {view === 'weekly-sales' && <WeeklySalesPerformanceDashboard report={report} secondaryOrders={secondaryOrders} loading={supplementalLoading['secondary-orders']} progress={supplementalProgress['secondary-orders']} onSecondaryOrderFile={(file) => loadSupplemental(file, 'secondary-orders')}/>}
+      {view === 'weekly-sales' && <WeeklySalesPerformanceDashboard report={report}/>}
       {view === 'employee-tour' && <EmployeeTourPlanReport report={report} attendance={attendance} dealers={dealers}/>}
       {report && view === 'dashboard' && <>
         <FilterPanel indexes={report.indexes} filters={filters} setFilters={setFilters} clear={() => setFilters(emptyFilters)}/>
