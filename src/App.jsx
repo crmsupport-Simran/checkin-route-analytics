@@ -10,6 +10,7 @@ import Q1Q3ReportsDashboard from './components/Q1Q3ReportsDashboard';
 import WeeklySalesPerformanceDashboard from './components/WeeklySalesPerformanceDashboard';
 import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
+import { loadLocalReport, saveLocalReport } from './services/localReportStore';
 
 const emptyFilters = { date: '', user: '', empId: '', manager: '', type: '', search: '' };
 const APPEARANCE_KEY = 'checkin-route-analytics-appearance';
@@ -55,7 +56,15 @@ export default function App() {
     return () => systemTheme.removeEventListener?.('change', applyAppearance);
   }, [appearance]);
 
-  const handleReport = async (file, { keepCurrent = false } = {}) => {
+  useEffect(() => {
+    let cancelled = false;
+    loadLocalReport('check-in')
+      .then((file) => { if (!cancelled && uploadId.current === 0 && file) handleReport(file, { keepCurrent: true, persist: false }); })
+      .catch(() => { /* The dashboard remains usable when local report storage is unavailable. */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleReport = async (file, { keepCurrent = false, persist = true } = {}) => {
     reportFile.current = file;
     const current = ++uploadId.current;
     setError('');
@@ -65,6 +74,10 @@ export default function App() {
     try {
       const parsed = await parseReport(file, (next) => { if (current === uploadId.current) setProgress(next); });
       if (current !== uploadId.current) return;
+      if (persist) {
+        try { await saveLocalReport('check-in', file); } catch { /* Keep the report usable if this browser cannot retain files. */ }
+        if (current !== uploadId.current) return;
+      }
       setIntegrity(parsed.integrity);
       setReport({ ...parsed, fileName: file.name });
       setProgress({ stage: 'Ready', progress: 100 });
