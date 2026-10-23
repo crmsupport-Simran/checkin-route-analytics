@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','1.2 · 23 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','1.3 · 23 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -110,7 +110,7 @@ bullets([
 'Export the report after confirming its scope. CSV/Excel exports follow the report calculations; they do not change them.'
 ])
 doc.add_heading('3. Welcome screen and tab behavior',level=1)
-para('Each new browser tab starts on a branded welcome screen using the Check-In Route Analytics artwork. Login opens the dashboard and records dismissal in that tab’s sessionStorage. Refreshing the same tab keeps the dashboard open; closing the tab ends that session, so a newly opened tab shows the welcome screen again. The Login button is a navigation/start control and does not verify credentials.')
+para('Each new browser tab starts on a branded welcome screen using the Check-In Route Analytics artwork, fitted in full without cropping. A prominent blue Login button sits above the screen midpoint. Login opens the dashboard and records dismissal in that tab’s sessionStorage. Refreshing the same tab keeps the dashboard open; closing the tab ends that session, so a newly opened tab shows the welcome screen again. The Login button is a navigation/start control and does not verify credentials.')
 doc.add_heading('4. Uploaded data and saved settings',level=1)
 para('Uploaded Check-In, Attendance, and Dealer Master files are session-only and are not retained after a page refresh or close. The app also clears any older persisted Check-In workbook from its previous storage version. Weekly plans, old/new retailer manual actuals, and appearance remain saved in local browser storage.')
 
