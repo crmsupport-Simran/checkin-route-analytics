@@ -29,6 +29,16 @@ test('groups source visits into employee-day rows and counts unique category ide
   assert.equal(rows[0].durationMinutes, 600);
 });
 
+test('reports only canonical Indian State/UT names from state fields or Check-In/Check-Out locations', () => {
+  const rows = buildCheckinOutReportRows([
+    row({ stateName: '', checkInLocation: 'Near Bhopal, Madhya Pradesh, India' }),
+    row({ id: 'delhi', empId: 'E-11', stateName: 'NCT of Delhi', checkOutLocation: 'Delhi, India' }),
+    row({ id: 'unknown', empId: 'E-12', stateName: 'Bhopal', checkInLocation: 'Near Bhopal' }),
+  ], [...headers.filter((name) => name !== 'State Name'), 'Check In Location', 'Check Out Location']);
+  assert.deepEqual(rows.map((item) => item.stateName), ['Madhya Pradesh', 'Delhi', null]);
+  assert.equal(getCheckinOutSourceCoverage(['Date', 'Check In Location']).state, true);
+});
+
 test('uses Emp ID for grouping across names and keeps undated or unidentified records distinct', () => {
   const rows = buildCheckinOutReportRows([
     row({ id: 'one', salesUserName: 'Asha Rao' }), row({ id: 'two', salesUserName: 'Asha R.' }),

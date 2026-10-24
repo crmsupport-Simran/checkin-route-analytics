@@ -10,6 +10,36 @@ const dayKey = (date) => date instanceof Date && Number.isFinite(date.getTime())
   ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '';
 const idFor = (record) => text(record.empId) ? `id:${text(record.empId).toLocaleUpperCase().replace(/\s+/g, ' ')}` : '';
 const normalizedIdentity = (value) => normalize(value).toLocaleUpperCase();
+const INDIA_STATES_AND_UTS = Object.freeze([
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh',
+  'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland',
+  'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+]);
+const STATE_ALIASES = new Map([
+  ['orissa', 'Odisha'], ['uttaranchal', 'Uttarakhand'], ['pondicherry', 'Puducherry'], ['nct of delhi', 'Delhi'],
+  ['national capital territory of delhi', 'Delhi'], ['j and k', 'Jammu and Kashmir'], ['j k', 'Jammu and Kashmir'],
+  ['dadra nagar haveli and daman diu', 'Dadra and Nagar Haveli and Daman and Diu'],
+  ['dadra and nagar haveli', 'Dadra and Nagar Haveli and Daman and Diu'], ['daman and diu', 'Dadra and Nagar Haveli and Daman and Diu'],
+]);
+const normalizedState = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const statesByNormalized = new Map(INDIA_STATES_AND_UTS.map((name) => [normalizedState(name), name]));
+const stateFromText = (...values) => {
+  const texts = values.map((value) => normalizedState(value)).filter(Boolean);
+  for (const value of texts) {
+    const exact = statesByNormalized.get(value) || STATE_ALIASES.get(value);
+    if (exact) return exact;
+  }
+  const aliases = [...STATE_ALIASES.entries()].sort((a, b) => b[0].length - a[0].length);
+  for (const value of texts) {
+    const padded = ` ${value} `;
+    for (const name of [...INDIA_STATES_AND_UTS].sort((a, b) => b.length - a.length)) {
+      if (padded.includes(` ${normalizedState(name)} `)) return name;
+    }
+    for (const [alias, name] of aliases) if (padded.includes(` ${alias} `)) return name;
+  }
+  return null;
+};
 const isMidnightTime = (value, raw) => Boolean(text(raw)) && ((value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0 && value.getSeconds() === 0)
   || raw === 0 || /^0?0:00(?::00)?$/.test(text(raw)));
 const validTime = (value, raw) => Boolean(text(raw)) && value instanceof Date && Number.isFinite(value.getTime()) && !isMidnightTime(value, raw);
@@ -36,7 +66,7 @@ export function getCheckinOutCellAlerts(row) {
 
 const SOURCE_ALIASES = Object.freeze({
   date: ['Date'], employee: ['Sales User Name', 'BDO Name'], empId: ['Emp ID', 'Employee ID'],
-  state: ['State Name', 'State'], checkIn: ['Check In', 'Check In Time'], checkOut: ['Check Out', 'Check Out Time'],
+  state: ['State Name', 'State'], stateLocation: ['Check In Location', 'Check Out Location'], checkIn: ['Check In', 'Check In Time'], checkOut: ['Check Out', 'Check Out Time'],
   counterPlanned: ['Counter Planned', 'Counters Planned', 'Planned Counters'], type: ['Type'], typeId: ['Type ID'],
   remark: ['Remark', 'Remarks'],
 });
@@ -45,7 +75,7 @@ export function getCheckinOutSourceCoverage(headers = []) {
   const present = (names) => names.some((name) => normalizedHeaders.has(normalize(name)));
   return {
     date: present(SOURCE_ALIASES.date), employee: present(SOURCE_ALIASES.employee), empId: present(SOURCE_ALIASES.empId),
-    state: present(SOURCE_ALIASES.state), checkIn: present(SOURCE_ALIASES.checkIn), checkOut: present(SOURCE_ALIASES.checkOut),
+    state: present(SOURCE_ALIASES.state) || present(SOURCE_ALIASES.stateLocation), stateLocation: present(SOURCE_ALIASES.stateLocation), checkIn: present(SOURCE_ALIASES.checkIn), checkOut: present(SOURCE_ALIASES.checkOut),
     counterPlanned: present(SOURCE_ALIASES.counterPlanned), type: present(SOURCE_ALIASES.type), typeId: present(SOURCE_ALIASES.typeId),
     remark: present(SOURCE_ALIASES.remark),
   };
@@ -101,7 +131,7 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
     const typeRecords = rows.map((row) => ({ type: row.type, typeId: row.typeId }));
     const remarks = [...new Set(rows.map((row) => text(row.remark)).filter(Boolean))];
     const firstName = rows.map((row) => text(row.salesUserName)).find(Boolean) || '';
-    const stateNames = [...new Set(rows.map((row) => text(row.stateName)).filter(Boolean))];
+    const stateNames = [...new Set(rows.map((row) => stateFromText(row.stateName, row.checkInLocation, row.checkOutLocation)).filter(Boolean))];
     const reportingManagers = [...new Set(rows.map((row) => text(row.reportingManager)).filter(Boolean))];
     const zonalManagers = [...new Set(rows.map((row) => text(row.zonalManager)).filter(Boolean))];
     const month = group.date ? new Date(`${group.date}T00:00:00`).toLocaleString('en-US', { month: 'short' }).toUpperCase() : '';

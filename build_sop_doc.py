@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','1.8 · 24 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','1.9 · 24 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -211,7 +211,7 @@ doc.add_heading('14. CHECKIN-OUT REPORT',level=1)
 para('This is a separate navigation tab and does not change the Q1–Q3 Reports Dashboard, Manager-only Joint Working KPI, or Weekly Sales Performance calculations. It reuses the currently loaded Check-In workbook and adds no mandatory upload.')
 table(['Report field','Source mapping and calculation'],[
 ('DATE / Month','Date; Month is derived from the parsed date.'),
-('BDO NAME / STATE NAME','BDO NAME uses Sales User Name (or BDO Name). STATE NAME uses State Name or State. Missing columns display SOURCE DATA REQUIRED.'),
+('BDO NAME / STATE NAME','BDO NAME uses Sales User Name (or BDO Name). STATE NAME is normalized to a recognized Indian State or Union Territory from State Name/State first, then Check-In Location or Check-Out Location. Location text must contain the state/UT name; coordinates are not sent to an external geocoding service. Unrecognized or unavailable state values display SOURCE DATA REQUIRED.'),
 ('CHECK IN TIME / CHECK OUT TIME','Check In / Check In Time and Check Out / Check Out Time. Employee-day displays the earliest valid check-in and latest valid check-out.'),
 ('TOTAL WORKING TIME','Elapsed span from earliest valid check-in to latest valid check-out for the employee-day; valid daily spans are summed. Average divides that total by employee-day rows with both valid timestamps and a nonnegative span no longer than 18 hours.'),
 ('COUNTER PLANNED','Fixed at 10 per employee-day; the workbook Counter Planned column is not used for this report.'),
