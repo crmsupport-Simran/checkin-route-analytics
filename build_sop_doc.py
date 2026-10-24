@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','1.3 · 23 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','1.4 · 24 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -96,6 +96,7 @@ table(['Tab / section','What it shows','Primary inputs'],[
 ('Joint Working KPI','Original Manager-only Q1/Q2/Q3 table, plus the separate Manager + Territory version.','Check-In workbook.'),
 ('Q1–Q2 Reports','Dedicated Manager + Territory Q1 visit-day report and Q2 unique Channel Partner report.','Check-In workbook.'),
 ('Weekly Sales Performance','Weekly plan versus actual rows, editable plans, and manual retailer actuals.','Check-In workbook.'),
+('CHECKIN-OUT REPORT','Employee-day attendance and visit-category summary with filters and exports.','Existing Check-In workbook; orders and sales await a verified Secondary Orders source.'),
 ('Employee Tour Plan','Historical employee/day route, attendance anchors, expected distance, and detailed route audit.','Check-In and Attendance; Dealer Master can enrich GPS.')],[1.55,3.15,2.75])
 
 doc.add_heading('2. Standard operating procedure',level=1)
@@ -105,6 +106,7 @@ bullets([
 'Upload the current Check-In / Check-Out workbook. The app parses it in the browser for the current page session only; refreshing or closing the page clears uploaded report data, so upload the workbook again when you return.',
 'Upload the matching Attendance Report for attendance start/stop times, coordinates, and route anchors. Upload Dealer Master for assigned dealers, planning, and optional visit-coordinate matching.',
 'Weekly Sales Performance order count and amount use Check-In rows only; there is no separate Secondary Sales uploader in the dashboard.',
+'CHECKIN-OUT REPORT reuses the same Check-In upload. Its order count and sale remain pending until the separate Secondary Orders source is inspected and connected.',
 'Choose the dashboard tab and reporting month. Confirm the source file name and month before interpreting or exporting values.',
 'Use Calculation Details or source audit tables to inspect source rows, eligibility, duplicates, missing identifiers, and exclusion reasons when a KPI does not reconcile.',
 'Export the report after confirming its scope. CSV/Excel exports follow the report calculations; they do not change them.'
@@ -205,7 +207,23 @@ bullets([
 'Expected KM covers start anchor → time-ordered visits → end anchor. If a required coordinate is unavailable, distance is not calculated. Road route is preferred; Haversine straight-line fallback is labeled estimated. Route audit exports show segments and coordinate source.'
 ])
 
-doc.add_heading('14. Inputs, storage, and interpretation',level=1)
+doc.add_heading('14. CHECKIN-OUT REPORT',level=1)
+para('This is a separate navigation tab and does not change the Q1–Q3 Reports Dashboard, Manager-only Joint Working KPI, or Weekly Sales Performance calculations. It reuses the currently loaded Check-In workbook and adds no mandatory upload.')
+table(['Report field','Source mapping and calculation'],[
+('DATE / Month','Date; Month is derived from the parsed date.'),
+('BDO NAME / STATE NAME','BDO NAME uses Sales User Name (or BDO Name). STATE NAME uses State Name or State. Missing columns display SOURCE DATA REQUIRED.'),
+('CHECK IN TIME / CHECK OUT TIME','Check In / Check In Time and Check Out / Check Out Time. Employee-day displays the earliest valid check-in and latest valid check-out.'),
+('TOTAL WORKING TIME','Elapsed span from earliest valid check-in to latest valid check-out for the employee-day; valid daily spans are summed. Average divides that total by employee-day rows with both valid timestamps and a nonnegative span no longer than 18 hours.'),
+('COUNTER PLANNED','Counter Planned, Counters Planned, or Planned Counters. Conflicting or missing values remain unavailable.'),
+('COUNTER VISITED','Distinct Type ID for Type DEALER + OTHER/OTHERS. Repeated IDs count once per employee-day. Missing Type ID values in qualifying rows make that subtotal unavailable.'),
+('CP VISIT','Distinct Type ID for Type CHANNEL PARTNER + DIRECT DEALER, counted separately from counters.'),
+('TOTAL ORDER COUNT / SALE','PENDING SOURCE DATA until a separate Secondary Orders workbook is inspected for verified order key, date, retailer and BDO mappings, and amount field. The existing Check-In Secondary Order Count and Basic Order Value are deliberately not substituted.'),
+('REMARKS','Remark or Remarks; distinct nonblank notes from the employee-day are retained.'),
+('Quality checks','00:00:00 requires source-convention validation and is not counted as valid. Negative spans and spans above 18 hours are flagged for review; source rows are not deleted.'),
+('Filters and exports','Month, start/end date, BDO, state, attendance status, and remarks/exception search apply to KPI cards, detail rows, CSV, and Excel exports. The export keeps the exact 13 detail columns in the displayed order; the table supports sorting, pagination, and horizontal scrolling.')],[2.05,5.4])
+para('KPI cards show Unique BDOs, Employee-day records, Valid Check-Ins, Valid Check-Outs, Total and Average Working Time, Total Counters Planned, Total Counters Visited, Counter Achievement %, Total CP Visits, Total Order Count, Total Sales, and records with missing/invalid attendance timestamps. Counter Achievement is Total Counters Visited ÷ Total Counters Planned × 100 when planned is greater than zero. Missing source values are not converted to zero.')
+
+doc.add_heading('15. Inputs, storage, and interpretation',level=1)
 table(['Input','Used for','Important field behavior'],[
 ('Check-In / Check-Out workbook','All check-in dashboards and KPIs.','Date, employee, ID, designation, Type, Joint Working fields, distributor fields, Type ID, sales type, order count/value and GPS are used where present.'),
 ('Attendance Report','Dashboard enrichments, Tour Plan anchors, Employee Tour Plan.','Start/Stop time, GPS, employee ID, date, Google KM, address and manager context.'),
@@ -213,7 +231,7 @@ table(['Input','Used for','Important field behavior'],[
 ],[1.65,2.5,3.3])
 para('The app processes Excel/CSV in the browser. Uploaded report files remain in page memory only and are cleared on refresh or close; weekly plans, manual actuals, and appearance are saved locally. Route display uses map tiles and route calculation may send coordinates to the configured public routing service; workbook rows and employee names are not needed for that route request. Routing availability can affect whether distance is road-based or estimated.')
 
-doc.add_heading('15. Reconciliation checklist',level=1)
+doc.add_heading('16. Reconciliation checklist',level=1)
 numbered([
 'Confirm the current Check-In workbook name and the selected month.',
 'Confirm source Date values and whether they are Excel dates or day-first text. Verify any blank/invalid date audit rows.',
@@ -250,7 +268,10 @@ table(['Output','Formula / unit of count'],[
 ('Weekly joint-working days','Count(distinct eligible employee identity + date) per week where Joint Working = YES.'),
 ('Weekly orders','Count(distinct Type ID) per week among secondary-sales Joint Working rows with positive order evidence.'),
 ('Weekly amount / AOV','Amount = sum Basic Order Value for qualifying Check-In rows, rounded up. AOV = amount ÷ unique order retailers, rounded up.'),
-('Retailer manual actuals','Entered by a user per week; blank is Pending. Not computed from Check-In.')],[1.7,5.75])
+('Retailer manual actuals','Entered by a user per week; blank is Pending. Not computed from Check-In.'),
+('Check-In/Check-Out employee-day','Group by Emp ID + parsed date. Rows without an Emp ID remain separate rather than being deduplicated by BDO name + date; unique BDO display may still use normalized names.'),
+('Counter / CP visits','Distinct Type ID by employee-day: DEALER + OTHER/OTHERS for counters; CHANNEL PARTNER + DIRECT DEALER for CP visits.'),
+('Check-In/Check-Out working time','Earliest valid Check In to latest valid Check Out; daily spans over 18 hours and negative spans are excluded from valid total and flagged.')],[1.7,5.75])
 
 # keep heading with next paragraph and table rows together as practical
 for p in doc.paragraphs:

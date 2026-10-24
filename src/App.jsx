@@ -8,6 +8,7 @@ import JointWorkingKpi from './components/JointWorkingKpi';
 import EmployeeTourPlanReport from './components/EmployeeTourPlanReport';
 import Q1Q3ReportsDashboard from './components/Q1Q3ReportsDashboard';
 import WeeklySalesPerformanceDashboard from './components/WeeklySalesPerformanceDashboard';
+import CheckinOutReport from './components/CheckinOutReport';
 import { parseReport } from './services/excelParser';
 import { parseSupplemental } from './services/supplementalLoader';
 import { clearLocalReport } from './services/localReportStore';
@@ -141,6 +142,7 @@ export default function App() {
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
         <button className={view === 'q1-q3-reports' ? 'active' : ''} onClick={() => setView('q1-q3-reports')}>Q1–Q2 Reports</button>
         <button className={view === 'weekly-sales' ? 'active' : ''} onClick={() => setView('weekly-sales')}>Weekly Sales Performance</button>
+        <button className={view === 'checkin-out' ? 'active' : ''} onClick={() => setView('checkin-out')}>CHECKIN-OUT REPORT</button>
         <button className={view === 'employee-tour' ? 'active' : ''} onClick={() => setView('employee-tour')}>Employee Tour Plan</button>
         <label className="appearance-control">Appearance
           <select aria-label="Appearance" value={appearance} onChange={(event) => setAppearance(event.target.value)}>
@@ -160,6 +162,7 @@ export default function App() {
       {view === 'joint-working' && <JointWorkingKpi report={report}/>}
       {view === 'q1-q3-reports' && <Q1Q3ReportsDashboard report={report}/>}
       {view === 'weekly-sales' && <WeeklySalesPerformanceDashboard report={report}/>}
+      {view === 'checkin-out' && <CheckinOutReport report={report}/>}
       {view === 'employee-tour' && <EmployeeTourPlanReport report={report} attendance={attendance} dealers={dealers}/>}
       {report && view === 'dashboard' && <>
         <FilterPanel indexes={report.indexes} filters={filters} setFilters={setFilters} clear={() => setFilters(emptyFilters)}/>
