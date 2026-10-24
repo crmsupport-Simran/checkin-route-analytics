@@ -35,6 +35,7 @@ export default function CheckinOutReport({ report }) {
   const [exception, setException] = useState('');
   const [sort, setSort] = useState({ key: 'dateKey', direction: 'asc' });
   const [page, setPage] = useState(0);
+  const [screenshotViewOpen, setScreenshotViewOpen] = useState(false);
   const [secondaryOrders, setSecondaryOrders] = useState(null);
   const [secondaryFileName, setSecondaryFileName] = useState('');
   const [secondaryLoading, setSecondaryLoading] = useState(false);
@@ -59,6 +60,14 @@ export default function CheckinOutReport({ report }) {
   const visibleRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   useEffect(() => { setPage(0); }, [month, startDate, endDate, bdo, state, reportingManager, zonalManager, status, exception]);
+  useEffect(() => {
+    if (!screenshotViewOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setScreenshotViewOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
+  }, [screenshotViewOpen]);
   const exportRows = getCheckinOutExportRows(filteredRows);
   const exportCsv = () => downloadCsv(exportRows, `checkin-out-report-${month}.csv`);
   const filterSummary = [
@@ -144,7 +153,7 @@ export default function CheckinOutReport({ report }) {
       <div className="checkinout-exports"><button className="secondary" onClick={exportExcel} disabled={!filteredRows.length}>Export Excel</button><button className="secondary" onClick={exportCsv} disabled={!filteredRows.length}>Export CSV</button><button className="secondary" onClick={printFilteredReport} disabled={!filteredRows.length}>Print Filtered Report</button><button className="secondary" onClick={downloadPageImage} disabled={!visibleRows.length}>Download Page Image</button></div>
     </div>
     <section className="card checkinout-table-card">
-      <div className="section-head"><div><span className="eyebrow">DETAIL REPORT</span><h3>{filteredRows.length.toLocaleString()} employee-day records</h3><p>00:00:00 timestamps are flagged for validation, not accepted as valid attendance.</p></div><span>Page {page + 1} / {pageCount}</span></div>
+      <div className="section-head"><div><span className="eyebrow">DETAIL REPORT</span><h3>{filteredRows.length.toLocaleString()} employee-day records</h3><p>00:00:00 timestamps are flagged for validation, not accepted as valid attendance.</p></div><div className="checkinout-table-actions"><span>Page {page + 1} / {pageCount}</span><button className="secondary" onClick={() => setScreenshotViewOpen(true)} disabled={!filteredRows.length}>Screenshot View</button></div></div>
       <p className="checkinout-export-hint">Excel and Print include all filtered rows. Page Image downloads the {visibleRows.length} rows currently shown on this page.</p>
       <div className="checkinout-excel-title">CHECK-IN &amp; CHECK-OUT REPORT · {monthLabel(month)}</div>
       <div className="checkinout-table-scroll"><table className="checkinout-table"><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} className={index < 4 ? 'checkinout-header-basic' : 'checkinout-header-data'} aria-sort={sort.key === sortKeys[index] ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button onClick={() => toggleSort(sortKeys[index])}>{label}{sort.key === sortKeys[index] ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => { const alerts = getCheckinOutCellAlerts(row); return <tr key={row.key} className={`checkinout-row-${row.status.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`} title={`Attendance status: ${row.status}`}>
@@ -185,6 +194,13 @@ export default function CheckinOutReport({ report }) {
       <div><label htmlFor="checkinout-exception">Remarks / exceptions</label><input id="checkinout-exception" type="search" placeholder="Search remarks or status" value={exception} onChange={(event) => setException(event.target.value)} /></div>
       <button className="secondary checkinout-clear" onClick={clearFilters}>Clear filters</button>
     </div>
+    {screenshotViewOpen && <div className="checkinout-screen-view" role="dialog" aria-modal="true" aria-label="Full-page filtered Check-In and Check-Out report">
+      <div className="checkinout-screen-toolbar"><div><span className="eyebrow">SCREENSHOT VIEW · FILTERED REPORT</span><h2>CHECK-IN &amp; CHECK-OUT REPORT · {monthLabel(month)}</h2><p>{filterSummary} · {filteredRows.length.toLocaleString()} filtered employee-day records</p></div><div><button className="secondary" onClick={printFilteredReport}>Print / Save PDF</button><button className="secondary" onClick={() => setScreenshotViewOpen(false)}>Close</button></div></div>
+      <div className="checkinout-screen-table-wrap"><table className="checkinout-table checkinout-screen-table"><colgroup>{[6, 4, 13, 10, 7, 7, 9, 6, 7, 5, 6, 7, 13].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}</colgroup><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} className={index < 4 ? 'checkinout-header-basic' : 'checkinout-header-data'}>{label}</th>)}</tr></thead><tbody>{sortedRows.map((row) => {
+        const alerts = getCheckinOutCellAlerts(row); const cells = getCheckinOutExportRows([row])[1];
+        return <tr key={row.key} title={`Attendance status: ${row.status}`}>{cells.map((value, index) => { const alert = (index === 4 && alerts.has('checkIn')) || (index === 5 && alerts.has('checkOut')) || (index === 6 && alerts.has('duration')) || (index === 8 && alerts.has('counterVisited')); const pending = index >= 10 && index <= 11 && (index === 10 ? row.orderCount == null : row.sale == null); return <td key={CHECKIN_OUT_COLUMNS[index]} className={`${alert ? 'checkinout-cell-alert' : ''}${pending ? ' checkinout-pending-cell' : ''}`}>{index === 11 && row.sale != null ? num(row.sale, 2) : value}</td>; })}</tr>;
+      })}</tbody></table>{!sortedRows.length && <p className="empty checkinout-no-rows">No records match the active filters.</p>}</div>
+    </div>}
     <p className="checkinout-footnote">Total working time is calculated per employee-day as earliest valid Check In to latest valid Check Out; it is not a sum of visit durations. Durations over 18 hours or negative spans are flagged for review. Uploaded order data is matched by employee and date and is held in this browser tab only.</p>
   </section>;
 }
