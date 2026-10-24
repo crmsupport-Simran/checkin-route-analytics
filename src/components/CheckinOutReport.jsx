@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { csvValue, money, num } from '../utils/formatUtils';
 import {
   attachSecondaryOrders, buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
-  formatWorkingTime, getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
+  formatWorkingTime, getCheckinOutCellAlerts, getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
 } from '../services/checkinOutReport';
 import { parseSupplemental } from '../services/supplementalLoader';
 
@@ -27,6 +27,8 @@ export default function CheckinOutReport({ report }) {
   const [endDate, setEndDate] = useState('');
   const [bdo, setBdo] = useState('');
   const [state, setState] = useState('');
+  const [reportingManager, setReportingManager] = useState('');
+  const [zonalManager, setZonalManager] = useState('');
   const [status, setStatus] = useState('');
   const [exception, setException] = useState('');
   const [sort, setSort] = useState({ key: 'dateKey', direction: 'asc' });
@@ -40,7 +42,7 @@ export default function CheckinOutReport({ report }) {
   useEffect(() => { if (month !== 'all' && !months.includes(month)) setMonth(months[0] || 'all'); }, [month, months]);
   const orderJoin = useMemo(() => attachSecondaryOrders(rows, secondaryOrders), [rows, secondaryOrders]);
   const reportRows = orderJoin.rows;
-  const filteredRows = useMemo(() => filterCheckinOutRows(reportRows, { month, startDate, endDate, bdo, state, status, exception }), [reportRows, month, startDate, endDate, bdo, state, status, exception]);
+  const filteredRows = useMemo(() => filterCheckinOutRows(reportRows, { month, startDate, endDate, bdo, state, reportingManager, zonalManager, status, exception }), [reportRows, month, startDate, endDate, bdo, state, reportingManager, zonalManager, status, exception]);
   const sortedRows = useMemo(() => [...filteredRows].sort((left, right) => {
     const a = left[sort.key], b = right[sort.key];
     const cmp = a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : (a instanceof Date && b instanceof Date ? a - b : typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
@@ -49,10 +51,12 @@ export default function CheckinOutReport({ report }) {
   const summary = useMemo(() => summarizeCheckinOutRows(filteredRows, coverage, Boolean(secondaryOrders)), [filteredRows, coverage, secondaryOrders]);
   const bdos = useMemo(() => [...new Set(rows.map((row) => row.bdoName).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rows]);
   const states = useMemo(() => [...new Set(rows.map((row) => row.stateName).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rows]);
+  const reportingManagers = useMemo(() => [...new Set(rows.map((row) => row.reportingManager).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rows]);
+  const zonalManagers = useMemo(() => [...new Set(rows.map((row) => row.zonalManager).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rows]);
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const visibleRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  useEffect(() => { setPage(0); }, [month, startDate, endDate, bdo, state, status, exception]);
+  useEffect(() => { setPage(0); }, [month, startDate, endDate, bdo, state, reportingManager, zonalManager, status, exception]);
   const exportRows = getCheckinOutExportRows(filteredRows);
   const exportCsv = () => downloadCsv(exportRows, `checkin-out-report-${month}.csv`);
   const exportExcel = () => {
@@ -61,7 +65,7 @@ export default function CheckinOutReport({ report }) {
     XLSX.writeFile(book, `checkin-out-report-${month}.xlsx`);
   };
   const toggleSort = (key) => setSort((current) => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' });
-  const clearFilters = () => { setMonth('all'); setStartDate(''); setEndDate(''); setBdo(''); setState(''); setStatus(''); setException(''); };
+  const clearFilters = () => { setMonth('all'); setStartDate(''); setEndDate(''); setBdo(''); setState(''); setReportingManager(''); setZonalManager(''); setStatus(''); setException(''); };
   const uploadSecondaryOrders = async (file) => {
     if (!file) return;
     setSecondaryLoading(true); setSecondaryError(''); setSecondaryProgress('Reading secondary orders…');
@@ -81,8 +85,8 @@ export default function CheckinOutReport({ report }) {
     ['Valid check-outs', num(summary.validCheckOuts, 0), 'Valid non-midnight check-out timestamps.'],
     ['Total working time', displayMinutes(summary.totalWorkingMinutes), 'Sum of valid daily first-check-in to last-check-out spans.'],
     ['Average working time', displayMinutes(summary.averageWorkingMinutes), `Total valid span ÷ ${num(summary.validWorkingRecords, 0)} valid employee-day records.`],
-    ['Total counters planned', displayNumber(summary.totalCountersPlanned), 'Requires a source Counter Planned field on every filtered row.'],
-    ['Total counters visited', displayNumber(summary.totalCountersVisited), 'Distinct Type ID under DEALER + OTHER/OTHERS.'],
+    ['Total counters planned', displayNumber(summary.totalCountersPlanned), 'Fixed plan: 10 counters per employee-day.'],
+    ['Total counters visited', displayNumber(summary.totalCountersVisited), 'Count of Check-In rows with Type DEALER or OTHER/OTHERS.'],
     ['Counter achievement', summary.counterAchievement == null ? (summary.totalCountersPlanned === 0 ? 'N/A' : 'SOURCE DATA REQUIRED') : `${summary.counterAchievement.toFixed(1)}%`, 'Total counters visited ÷ total counters planned.'],
     ['Total CP visits', displayNumber(summary.totalCpVisits), 'Distinct Type ID under CHANNEL PARTNER + DIRECT DEALER.'],
     ['Total order count', summary.ordersPending ? 'PENDING SOURCE DATA' : num(summary.totalOrderCount, 0), 'Unique order IDs matched to employee and order date in the uploaded Secondary Orders file.'],
@@ -110,7 +114,6 @@ export default function CheckinOutReport({ report }) {
     <div className="card checkinout-source-note">
       <b>Source and pending values</b>
       <span>Check-in rows are grouped by employee ID + date. Counter Visited counts Check-In rows whose Type is DEALER or OTHER/OTHERS. CP Visit counts unique Type ID values in CHANNEL PARTNER and DIRECT DEALER. Secondary orders are deduplicated by Order ID, matched by employee ID (name fallback only if ID is missing) + Date Created. SALE sums Basic order value only.</span>
-      {!coverage.counterPlanned && <span className="checkinout-warning">COUNTER PLANNED unavailable: the loaded workbook has no Counter Planned source field.</span>}
       {!coverage.type && <span className="checkinout-warning">COUNTER VISITED unavailable: the loaded workbook has no Check-In Type column.</span>}
       {(!coverage.type || !coverage.typeId) && <span className="checkinout-warning">CP VISIT unavailable: required source field(s) missing: {[!coverage.type && 'Type', !coverage.typeId && 'Type ID'].filter(Boolean).join(', ')}.</span>}
       {!coverage.state && <span className="checkinout-warning">STATE NAME unavailable: the loaded workbook has no State Name or State column.</span>}
@@ -124,13 +127,18 @@ export default function CheckinOutReport({ report }) {
       <div><label htmlFor="checkinout-end">End date</label><input id="checkinout-end" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div>
       <div><label htmlFor="checkinout-bdo">BDO Name</label><select id="checkinout-bdo" value={bdo} onChange={(event) => setBdo(event.target.value)}><option value="">All BDOs</option>{bdos.map((name) => <option key={name}>{name}</option>)}</select></div>
       <div><label htmlFor="checkinout-state">State Name</label><select id="checkinout-state" value={state} onChange={(event) => setState(event.target.value)}><option value="">All states</option>{states.map((name) => <option key={name}>{name}</option>)}</select></div>
+      <div><label htmlFor="checkinout-zonal-manager">Zonal Manager</label><select id="checkinout-zonal-manager" value={zonalManager} onChange={(event) => setZonalManager(event.target.value)}><option value="">All zonal managers</option>{zonalManagers.map((name) => <option key={name}>{name}</option>)}</select></div>
+      <div><label htmlFor="checkinout-reporting-manager">Reporting Manager</label><select id="checkinout-reporting-manager" value={reportingManager} onChange={(event) => setReportingManager(event.target.value)}><option value="">All reporting managers</option>{reportingManagers.map((name) => <option key={name}>{name}</option>)}</select></div>
       <div><label htmlFor="checkinout-status">Attendance status</label><select id="checkinout-status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option>Valid</option><option>Missing / invalid timestamp</option><option>Timestamp review required</option><option>Invalid duration</option><option>Unusual duration</option></select></div>
       <div><label htmlFor="checkinout-exception">Remarks / exceptions</label><input id="checkinout-exception" type="search" placeholder="Search remarks or status" value={exception} onChange={(event) => setException(event.target.value)} /></div>
       <button className="secondary checkinout-clear" onClick={clearFilters}>Clear filters</button>
     </div>
     <section className="card checkinout-table-card">
       <div className="section-head"><div><span className="eyebrow">DETAIL REPORT</span><h3>{filteredRows.length.toLocaleString()} employee-day records</h3><p>00:00:00 timestamps are flagged for validation, not accepted as valid attendance.</p></div><span>Page {page + 1} / {pageCount}</span></div>
-      <div className="checkinout-table-scroll"><table className="checkinout-table"><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} aria-sort={sort.key === sortKeys[index] ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button onClick={() => toggleSort(sortKeys[index])}>{label}{sort.key === sortKeys[index] ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => <tr key={row.key} className={`checkinout-row-${row.status.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`} title={`Attendance status: ${row.status}`}>{CHECKIN_OUT_COLUMNS.map((label, index) => <td key={label} className={index >= 10 && index <= 11 && (index === 10 ? row.orderCount == null : row.sale == null) ? 'checkinout-pending-cell' : ''}>{index === 11 && row.sale != null ? num(row.sale, 2) : visibleExportRows[rowIndex][index]}</td>)}</tr>)}</tbody></table></div>
+      <div className="checkinout-excel-title">CHECK-IN &amp; CHECK-OUT REPORT · {monthLabel(month)}</div>
+      <div className="checkinout-table-scroll"><table className="checkinout-table"><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} className={index < 4 ? 'checkinout-header-basic' : 'checkinout-header-data'} aria-sort={sort.key === sortKeys[index] ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button onClick={() => toggleSort(sortKeys[index])}>{label}{sort.key === sortKeys[index] ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => { const alerts = getCheckinOutCellAlerts(row); return <tr key={row.key} className={`checkinout-row-${row.status.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`} title={`Attendance status: ${row.status}`}>
+        {CHECKIN_OUT_COLUMNS.map((label, index) => { const alert = (index === 4 && alerts.has('checkIn')) || (index === 5 && alerts.has('checkOut')) || (index === 6 && alerts.has('duration')) || (index === 8 && alerts.has('counterVisited')); const pending = index >= 10 && index <= 11 && (index === 10 ? row.orderCount == null : row.sale == null); const classes = [alert ? 'checkinout-cell-alert' : '', pending ? 'checkinout-pending-cell' : ''].filter(Boolean).join(' '); return <td key={label} className={classes}>{index === 11 && row.sale != null ? num(row.sale, 2) : visibleExportRows[rowIndex][index]}</td>; })}
+      </tr>; })}</tbody></table></div>
       {!filteredRows.length && <p className="empty checkinout-no-rows">No records match the active filters.</p>}
       <div className="q3-pagination"><span>{filteredRows.length ? `${(page * PAGE_SIZE + 1).toLocaleString()}–${Math.min((page + 1) * PAGE_SIZE, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()}` : '0 records'}</span><button className="secondary" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</button><button className="secondary" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next</button></div>
     </section>

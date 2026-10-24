@@ -13,23 +13,26 @@ const normalizedIdentity = (value) => normalize(value).toLocaleUpperCase();
 const isMidnightTime = (value, raw) => Boolean(text(raw)) && ((value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0 && value.getSeconds() === 0)
   || raw === 0 || /^0?0:00(?::00)?$/.test(text(raw)));
 const validTime = (value, raw) => Boolean(text(raw)) && value instanceof Date && Number.isFinite(value.getTime()) && !isMidnightTime(value, raw);
-const parseNumeric = (value) => {
-  if (value == null || text(value) === '') return null;
-  const cleaned = typeof value === 'number' ? value : Number(String(value).replace(/[^0-9.-]/g, ''));
-  return Number.isFinite(cleaned) ? cleaned : null;
-};
 const fmtTime = (date) => date instanceof Date && Number.isFinite(date.getTime())
   ? [date.getHours(), date.getMinutes(), date.getSeconds()].map((part) => String(part).padStart(2, '0')).join(':') : 'SOURCE DATA REQUIRED';
 const fmtDate = (key) => {
   if (!key) return 'SOURCE DATA REQUIRED';
   const date = new Date(`${key}T00:00:00`);
-  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date) : 'SOURCE DATA REQUIRED';
+  return Number.isFinite(date.getTime()) ? `${String(date.getDate()).padStart(2, '0')}-${new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date)}-${String(date.getFullYear()).slice(-2)}` : 'SOURCE DATA REQUIRED';
 };
 export const formatWorkingTime = (minutes) => {
   if (!Number.isFinite(minutes) || minutes < 0) return 'SOURCE DATA REQUIRED';
   const seconds = Math.round(minutes * 60);
   return `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 };
+export function getCheckinOutCellAlerts(row) {
+  const alerts = new Set();
+  if (row.checkInValid && row.checkIn.getHours() * 60 + row.checkIn.getMinutes() > 10 * 60 + 30) alerts.add('checkIn');
+  if (row.checkOutValid && row.checkOut.getHours() * 60 + row.checkOut.getMinutes() < 19 * 60 + 30) alerts.add('checkOut');
+  if (row.durationValid && row.durationMinutes < 7 * 60) alerts.add('duration');
+  if (row.counterVisited != null && row.counterVisited < 8) alerts.add('counterVisited');
+  return alerts;
+}
 
 const SOURCE_ALIASES = Object.freeze({
   date: ['Date'], employee: ['Sales User Name', 'BDO Name'], empId: ['Emp ID', 'Employee ID'],
@@ -94,18 +97,20 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
     const timestampReview = rows.some((row) => isMidnightTime(row.checkIn, row.checkInRaw) || isMidnightTime(row.checkOut, row.checkOutRaw));
     const durationMinutes = checkInValid && checkOutValid ? (checkOut - checkIn) / 60000 : null;
     const durationValid = Number.isFinite(durationMinutes) && durationMinutes >= 0 && durationMinutes <= 18 * 60;
-    const planValues = [...new Set(rows.map((row) => parseNumeric(row.counterPlanned)).filter((value) => value != null))];
-    const counterPlanned = coverage.counterPlanned && planValues.length === 1 ? planValues[0] : null;
+    const counterPlanned = 10;
     const typeRecords = rows.map((row) => ({ type: row.type, typeId: row.typeId }));
     const remarks = [...new Set(rows.map((row) => text(row.remark)).filter(Boolean))];
     const firstName = rows.map((row) => text(row.salesUserName)).find(Boolean) || '';
     const stateNames = [...new Set(rows.map((row) => text(row.stateName)).filter(Boolean))];
+    const reportingManagers = [...new Set(rows.map((row) => text(row.reportingManager)).filter(Boolean))];
+    const zonalManagers = [...new Set(rows.map((row) => text(row.zonalManager)).filter(Boolean))];
     const month = group.date ? new Date(`${group.date}T00:00:00`).toLocaleString('en-US', { month: 'short' }).toUpperCase() : '';
     const status = attendanceStatus(checkInValid, checkOutValid, durationMinutes, timestampReview);
     return {
       key: group.key, dateKey: group.date, date: fmtDate(group.date), month,
       bdoName: firstName, empId: text(rows.find((row) => text(row.empId))?.empId), employeeKey: group.identity || (firstName ? `name:${normalize(firstName)}` : `source:${group.key}`),
       stateName: stateNames.length === 1 ? stateNames[0] : stateNames.join(', ') || null,
+      reportingManager: reportingManagers.join(', ') || null, zonalManager: zonalManagers.join(', ') || null,
       checkIn, checkOut, checkInValid, checkOutValid, timestampReview, durationMinutes, durationValid, status,
       counterPlanned,
       counterVisited: counterTypeCount(typeRecords, coverage),
@@ -154,6 +159,8 @@ export function filterCheckinOutRows(rows = [], filters = {}) {
     if (filters.endDate && (!row.dateKey || row.dateKey > filters.endDate)) return false;
     if (filters.bdo && row.bdoName !== filters.bdo) return false;
     if (filters.state && row.stateName !== filters.state) return false;
+    if (filters.reportingManager && row.reportingManager !== filters.reportingManager) return false;
+    if (filters.zonalManager && row.zonalManager !== filters.zonalManager) return false;
     if (filters.status && row.status !== filters.status) return false;
     const query = normalize(filters.exception);
     if (query && !normalize(`${row.remarks} ${row.status}`).includes(query)) return false;
@@ -165,10 +172,10 @@ export function summarizeCheckinOutRows(rows = [], coverage = {}, secondaryOrder
   const identitySet = new Set(rows.map((row) => row.employeeKey).filter((key) => key && !key.startsWith('source:')));
   const validWorkingRows = rows.filter((row) => row.durationValid);
   const totalWorkingMinutes = validWorkingRows.reduce((sum, row) => sum + row.durationMinutes, 0);
-  const plannedComplete = coverage.counterPlanned && rows.every((row) => row.counterPlanned != null);
-  const countersComplete = coverage.type && coverage.typeId && rows.every((row) => row.counterVisited != null);
+  const plannedComplete = true;
+  const countersComplete = coverage.type && rows.every((row) => row.counterVisited != null);
   const cpComplete = coverage.type && coverage.typeId && rows.every((row) => row.cpVisit != null);
-  const planned = plannedComplete ? rows.reduce((sum, row) => sum + row.counterPlanned, 0) : null;
+  const planned = rows.reduce((sum, row) => sum + row.counterPlanned, 0);
   const visited = countersComplete ? rows.reduce((sum, row) => sum + row.counterVisited, 0) : null;
   return {
     uniqueBdos: identitySet.size, employeeDayRecords: rows.length,

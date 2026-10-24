@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   attachSecondaryOrders, buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
-  getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
+  getCheckinOutCellAlerts, getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
 } from './checkinOutReport.js';
 
 const headers = ['Date', 'Sales User Name', 'Emp ID', 'State Name', 'Check In', 'Check Out', 'Type', 'Type ID', 'Counter Planned', 'Remark'];
@@ -69,14 +69,14 @@ test('flags negative and over-18-hour daily spans for review', () => {
   assert.equal(rows.every((item) => !item.durationValid), true);
 });
 
-test('Counter Visited counts Check-In Type rows without requiring Type ID; CP visits still require unique IDs', () => {
+test('Counter Visited counts Check-In Type rows without requiring Type ID; Counter Planned is fixed at 10', () => {
   const missingId = buildCheckinOutReportRows([row({ type: 'CHANNEL PARTNER', typeId: '' })], headers);
   const missingPlan = buildCheckinOutReportRows([row()], headers.filter((name) => name !== 'Counter Planned'));
   assert.equal(missingId[0].counterVisited, 0);
   assert.equal(missingId[0].cpVisit, null);
-  assert.equal(missingPlan[0].counterPlanned, null);
+  assert.equal(missingPlan[0].counterPlanned, 10);
   assert.equal(summarizeCheckinOutRows(missingId, getCheckinOutSourceCoverage(headers)).totalCountersVisited, 0);
-  assert.equal(summarizeCheckinOutRows(missingPlan, getCheckinOutSourceCoverage(headers)).totalCountersPlanned, null);
+  assert.equal(summarizeCheckinOutRows(missingPlan, getCheckinOutSourceCoverage(headers)).totalCountersPlanned, 10);
 });
 
 test('Counter Visited counts only Check-In rows with DEALER or OTHER/OTHERS Type values', () => {
@@ -89,13 +89,31 @@ test('Counter Visited counts only Check-In rows with DEALER or OTHER/OTHERS Type
   assert.equal(rows[0].counterVisited, 3);
 });
 
-test('applies month, date, BDO, state, attendance, and remarks filters', () => {
+test('applies month, date, BDO, state, manager, attendance, and remarks filters', () => {
   const rows = buildCheckinOutReportRows([
-    row({ id: 'a', remark: 'Phone order received' }),
-    row({ id: 'b', dateKey: '2026-11-01', date: at(1, 0), salesUserName: 'Maya', stateName: 'Rajasthan' }),
+    row({ id: 'a', remark: 'Phone order received', reportingManager: 'Raj Mehta', zonalManager: 'West Zone' }),
+    row({ id: 'b', dateKey: '2026-11-01', date: at(1, 0), salesUserName: 'Maya', stateName: 'Rajasthan', reportingManager: 'Amit Shah', zonalManager: 'North Zone' }),
   ], headers);
-  assert.equal(filterCheckinOutRows(rows, { month: '2026-10', startDate: '2026-10-01', endDate: '2026-10-31', bdo: 'Asha Rao', state: 'Gujarat', status: 'Valid', exception: 'phone order' }).length, 1);
+  assert.equal(filterCheckinOutRows(rows, { month: '2026-10', startDate: '2026-10-01', endDate: '2026-10-31', bdo: 'Asha Rao', state: 'Gujarat', reportingManager: 'Raj Mehta', zonalManager: 'West Zone', status: 'Valid', exception: 'phone order' }).length, 1);
   assert.equal(filterCheckinOutRows(rows, { status: 'Unusual duration' }).length, 0);
+});
+
+test('fixes Counter Planned at 10 for every employee-day regardless of source values', () => {
+  const rows = buildCheckinOutReportRows([row({ counterPlanned: 99 }), row({ id: 'r2', empId: 'E-11', counterPlanned: '' })], headers);
+  assert.deepEqual(rows.map((item) => item.counterPlanned), [10, 10]);
+  assert.equal(summarizeCheckinOutRows(rows, getCheckinOutSourceCoverage(headers)).totalCountersPlanned, 20);
+});
+
+test('applies strict red-cell thresholds only to valid values', () => {
+  const lateEarlyShort = buildCheckinOutReportRows([row({ checkIn: at(1, 12, 31), checkInRaw: '12:31:00', checkOut: at(1, 19, 29), checkOutRaw: '19:29:00', type: 'DEALER', typeId: '' })], headers)[0];
+  assert.deepEqual([...getCheckinOutCellAlerts(lateEarlyShort)].sort(), ['checkIn', 'checkOut', 'counterVisited', 'duration']);
+  const exactlyThresholds = buildCheckinOutReportRows([row({ checkIn: at(1, 10, 30), checkInRaw: '10:30:00', checkOut: at(1, 19, 30), checkOutRaw: '19:30:00' })], headers)[0];
+  assert.equal(getCheckinOutCellAlerts(exactlyThresholds).has('checkIn'), false);
+  assert.equal(getCheckinOutCellAlerts(exactlyThresholds).has('checkOut'), false);
+  assert.equal(getCheckinOutCellAlerts(exactlyThresholds).has('duration'), false);
+  assert.equal(getCheckinOutCellAlerts(lateEarlyShort).has('counterVisited'), true);
+  const invalid = buildCheckinOutReportRows([row({ checkIn: at(1, 0), checkInRaw: '00:00:00', checkOut: null, checkOutRaw: '' })], headers)[0];
+  assert.equal(getCheckinOutCellAlerts(invalid).has('checkIn'), false);
 });
 
 test('calculates working-time average over valid employee-days and leaves orders pending', () => {
