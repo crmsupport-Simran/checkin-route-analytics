@@ -14,6 +14,7 @@ const downloadCsv = (rows, fileName) => {
   const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = fileName; anchor.click(); URL.revokeObjectURL(url);
 };
+const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 const displayNumber = (value) => value == null ? 'SOURCE DATA REQUIRED' : num(value, 0);
 const displayMinutes = (value) => value == null ? 'SOURCE DATA REQUIRED' : formatWorkingTime(value);
 
@@ -59,6 +60,46 @@ export default function CheckinOutReport({ report }) {
   useEffect(() => { setPage(0); }, [month, startDate, endDate, bdo, state, reportingManager, zonalManager, status, exception]);
   const exportRows = getCheckinOutExportRows(filteredRows);
   const exportCsv = () => downloadCsv(exportRows, `checkin-out-report-${month}.csv`);
+  const filterSummary = [
+    month !== 'all' ? monthLabel(month) : '', startDate ? `From ${startDate}` : '', endDate ? `To ${endDate}` : '',
+    bdo ? `BDO: ${bdo}` : '', state ? `State: ${state}` : '', zonalManager ? `Zonal Manager: ${zonalManager}` : '',
+    reportingManager ? `Reporting Manager: ${reportingManager}` : '', status ? `Status: ${status}` : '', exception ? `Search: ${exception}` : '',
+  ].filter(Boolean).join(' · ') || 'All available records';
+  const printFilteredReport = () => {
+    const [headers, ...data] = exportRows;
+    const popup = window.open('', '_blank');
+    if (!popup) return;
+    const headerCells = headers.map((value, index) => `<th class="${index < 4 ? 'identity' : 'metric'}">${escapeHtml(value)}</th>`).join('');
+    const bodyRows = data.map((row, rowIndex) => { const alerts = getCheckinOutCellAlerts(filteredRows[rowIndex]); return `<tr>${row.map((value, index) => { const alert = (index === 4 && alerts.has('checkIn')) || (index === 5 && alerts.has('checkOut')) || (index === 6 && alerts.has('duration')) || (index === 8 && alerts.has('counterVisited')); return `<td class="${alert ? 'alert' : ''}">${escapeHtml(value)}</td>`; }).join('')}</tr>`; }).join('');
+    popup.document.open();
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Check-In Check-Out filtered report</title><style>@page{size:landscape;margin:10mm}*{box-sizing:border-box}body{font:9px Arial,sans-serif;color:#111;margin:0}.title{background:#9fc5e8;border:1px solid #222;text-align:center;font-size:16px;font-weight:bold;padding:9px}.meta{padding:6px 2px 9px;font-size:9px}table{width:100%;border-collapse:collapse}thead{display:table-header-group}tr{break-inside:avoid}th,td{border:1px solid #333;padding:5px 4px;text-align:left;vertical-align:top}th{font-size:8px;text-transform:uppercase}.identity{background:#fff200}.metric{background:#8fce4e}td{font-weight:600}td:nth-child(n+9):nth-child(-n+12){text-align:center}.alert{color:#d71920;font-weight:850}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body><div class="title">CHECK-IN &amp; CHECK-OUT REPORT · ${escapeHtml(monthLabel(month))}</div><div class="meta">${escapeHtml(filterSummary)} · ${filteredRows.length.toLocaleString()} filtered employee-day records</div><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`);
+    popup.document.close();
+  };
+  const downloadPageImage = () => {
+    const headers = CHECKIN_OUT_COLUMNS;
+    const values = visibleRows.map((row) => ({ cells: getCheckinOutExportRows([row])[1], alerts: getCheckinOutCellAlerts(row) }));
+    const widths = [92, 58, 175, 145, 112, 120, 132, 112, 112, 82, 115, 115, 260];
+    const scale = 1.5; const rowHeight = 30; const headHeight = 32; const titleHeight = 42; const metaHeight = 28;
+    const width = widths.reduce((sum, value) => sum + value, 0); const height = titleHeight + metaHeight + headHeight + values.length * rowHeight;
+    const canvas = document.createElement('canvas'); canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext('2d'); ctx.scale(scale, scale); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#9fc5e8'; ctx.fillRect(0, 0, width, titleHeight); ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(.5, .5, width - 1, titleHeight - 1);
+    ctx.fillStyle = '#111'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(`CHECK-IN & CHECK-OUT REPORT · ${monthLabel(month)}`, width / 2, titleHeight / 2);
+    ctx.font = '10px Arial'; ctx.textAlign = 'left'; ctx.fillText(`${filterSummary} · ${filteredRows.length.toLocaleString()} filtered records · page ${page + 1}`, 4, titleHeight + metaHeight / 2);
+    let y = titleHeight + metaHeight;
+    const drawRow = (cells, isHeader = false, alerts = new Set()) => {
+      let x = 0;
+      cells.forEach((value, index) => {
+        const cellWidth = widths[index]; ctx.fillStyle = isHeader ? (index < 4 ? '#fff200' : '#8fce4e') : '#fff'; ctx.fillRect(x, y, cellWidth, isHeader ? headHeight : rowHeight);
+        ctx.strokeStyle = '#333'; ctx.lineWidth = .7; ctx.strokeRect(x, y, cellWidth, isHeader ? headHeight : rowHeight);
+        ctx.save(); ctx.beginPath(); ctx.rect(x + 4, y + 1, cellWidth - 8, (isHeader ? headHeight : rowHeight) - 2); ctx.clip(); const alert = (index === 4 && alerts.has('checkIn')) || (index === 5 && alerts.has('checkOut')) || (index === 6 && alerts.has('duration')) || (index === 8 && alerts.has('counterVisited')); ctx.fillStyle = alert ? '#d71920' : '#111'; ctx.font = `${isHeader ? 'bold ' : alert ? 'bold ' : '600 '}${isHeader ? 9 : 10}px Arial`; ctx.textAlign = index >= 8 && index <= 11 ? 'center' : 'left';
+        const textX = index >= 8 && index <= 11 ? x + cellWidth / 2 : x + 4; ctx.fillText(String(value ?? ''), textX, y + (isHeader ? headHeight : rowHeight) / 2); ctx.restore(); x += cellWidth;
+      });
+      y += isHeader ? headHeight : rowHeight;
+    };
+    drawRow(headers, true); values.forEach(({ cells, alerts }) => drawRow(cells, false, alerts));
+    canvas.toBlob((blob) => { if (!blob) return; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `checkin-out-report-${month}-page-${page + 1}.png`; anchor.click(); URL.revokeObjectURL(url); }, 'image/png');
+  };
   const exportExcel = () => {
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(exportRows), 'Check-In-Out Report');
@@ -99,7 +140,7 @@ export default function CheckinOutReport({ report }) {
   return <section className="checkinout-report">
     <div className="joint-kpi-heading checkinout-heading">
       <div><span className="eyebrow">CHECK-IN REPORT · ATTENDANCE SUMMARY</span><h2>CHECKIN-OUT REPORT</h2><p>{monthLabel(month)} · based on the currently loaded Check-In workbook.</p></div>
-      <div className="checkinout-exports"><button className="secondary" onClick={exportExcel} disabled={!filteredRows.length}>Export Excel</button><button className="secondary" onClick={exportCsv} disabled={!filteredRows.length}>Export CSV</button></div>
+      <div className="checkinout-exports"><button className="secondary" onClick={exportExcel} disabled={!filteredRows.length}>Export Excel</button><button className="secondary" onClick={exportCsv} disabled={!filteredRows.length}>Export CSV</button><button className="secondary" onClick={printFilteredReport} disabled={!filteredRows.length}>Print Filtered Report</button><button className="secondary" onClick={downloadPageImage} disabled={!visibleRows.length}>Download Page Image</button></div>
     </div>
     <div className="card checkinout-order-upload">
       <div><span className="eyebrow">SECONDARY ORDER SOURCE</span><b>Upload Secondary Orders</b><small>Upload the secondary order Excel or CSV here. Order date uses Date Created; sales uses Basic order value (Excel column V) only.</small></div>
@@ -135,6 +176,7 @@ export default function CheckinOutReport({ report }) {
     </div>
     <section className="card checkinout-table-card">
       <div className="section-head"><div><span className="eyebrow">DETAIL REPORT</span><h3>{filteredRows.length.toLocaleString()} employee-day records</h3><p>00:00:00 timestamps are flagged for validation, not accepted as valid attendance.</p></div><span>Page {page + 1} / {pageCount}</span></div>
+      <p className="checkinout-export-hint">Excel and Print include all filtered rows. Page Image downloads the {visibleRows.length} rows currently shown on this page.</p>
       <div className="checkinout-excel-title">CHECK-IN &amp; CHECK-OUT REPORT · {monthLabel(month)}</div>
       <div className="checkinout-table-scroll"><table className="checkinout-table"><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} className={index < 4 ? 'checkinout-header-basic' : 'checkinout-header-data'} aria-sort={sort.key === sortKeys[index] ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button onClick={() => toggleSort(sortKeys[index])}>{label}{sort.key === sortKeys[index] ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => { const alerts = getCheckinOutCellAlerts(row); return <tr key={row.key} className={`checkinout-row-${row.status.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`} title={`Attendance status: ${row.status}`}>
         {CHECKIN_OUT_COLUMNS.map((label, index) => { const alert = (index === 4 && alerts.has('checkIn')) || (index === 5 && alerts.has('checkOut')) || (index === 6 && alerts.has('duration')) || (index === 8 && alerts.has('counterVisited')); const pending = index >= 10 && index <= 11 && (index === 10 ? row.orderCount == null : row.sale == null); const classes = [alert ? 'checkinout-cell-alert' : '', pending ? 'checkinout-pending-cell' : ''].filter(Boolean).join(' '); return <td key={label} className={classes}>{index === 11 && row.sale != null ? num(row.sale, 2) : visibleExportRows[rowIndex][index]}</td>; })}
