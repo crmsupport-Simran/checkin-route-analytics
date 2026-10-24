@@ -46,7 +46,7 @@ export function buildCheckinOutExcelWorkbook(rows = [], title = 'CHECK-IN & CHEC
         worksheet[cellAddress(excelRow, column)] = cell;
       }
       cell.s = baseCellStyle(statusFill, font);
-      if (column === 11 && typeof cell.v === 'number') cell.z = '#,##0.##';
+      if (column === 11 && typeof cell.v === 'number') cell.z = '#,##0';
     }
   });
   worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: CHECKIN_OUT_COLUMNS.length - 1 } }];

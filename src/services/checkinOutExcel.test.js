@@ -7,7 +7,7 @@ test('Excel export keeps report bands, centered data, alerts, and missing source
     date: '01-Oct-26', month: 'OCT', bdoName: 'Test BDO', stateName: 'Gujarat',
     checkIn: new Date(2026, 9, 1, 10, 45), checkOut: new Date(2026, 9, 1, 19, 0),
     checkInValid: true, checkOutValid: true, durationMinutes: 6 * 60, durationValid: true,
-    counterPlanned: 10, counterVisited: 7, cpVisit: 0, orderCount: null, sale: null,
+    counterPlanned: 10, counterVisited: 7, cpVisit: 0, orderCount: null, sale: 20817,
     remarks: '', status: 'Valid',
   };
   const sheet = buildCheckinOutExcelWorkbook([row], 'Filtered report').Sheets['Check-In-Out Report'];
@@ -23,6 +23,7 @@ test('Excel export keeps report bands, centered data, alerts, and missing source
   assert.equal(sheet.I3.s.font.color.rgb, 'D71920');
   assert.equal(sheet.K3.s.font.color.rgb, '946400');
   assert.equal(sheet.M3.s.fill.fgColor.rgb, 'FFFFFF');
+  assert.equal(sheet.L3.z, '#,##0');
   assert.equal(sheet['!autofilter'].ref, 'A2:M3');
   assert.deepEqual(sheet['!merges'][0], { s: { r: 0, c: 0 }, e: { r: 0, c: 12 } });
 });
