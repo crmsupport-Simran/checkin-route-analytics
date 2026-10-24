@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
 import { csvValue, money, num } from '../utils/formatUtils';
+import { downloadCheckinOutExcel } from '../services/checkinOutExcel.js';
 import {
   attachSecondaryOrders, buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
   formatWorkingTime, getCheckinOutCellAlerts, getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
@@ -110,11 +110,11 @@ export default function CheckinOutReport({ report }) {
     drawRow(headers, true); values.forEach(({ cells, alerts }) => drawRow(cells, false, alerts));
     canvas.toBlob((blob) => { if (!blob) return; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `checkin-out-report-${month}-page-${page + 1}.png`; anchor.click(); URL.revokeObjectURL(url); }, 'image/png');
   };
-  const exportExcel = () => {
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(exportRows), 'Check-In-Out Report');
-    XLSX.writeFile(book, `checkin-out-report-${month}.xlsx`);
-  };
+  const exportExcel = () => downloadCheckinOutExcel(
+    filteredRows,
+    `CHECK-IN & CHECK-OUT REPORT · ${monthLabel(month)}`,
+    `checkin-out-report-${month}.xlsx`,
+  );
   const toggleSort = (key) => setSort((current) => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' });
   const clearFilters = () => { setMonth('all'); setStartDate(''); setEndDate(''); setBdo(''); setState(''); setReportingManager(''); setZonalManager(''); setStatus(''); setException(''); };
   const uploadSecondaryOrders = async (file) => {
