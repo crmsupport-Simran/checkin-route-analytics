@@ -60,6 +60,10 @@ function uniqueCategoryCount(records, allowedTypes, coverage) {
   }
   return ids.size;
 }
+function counterTypeCount(records, coverage) {
+  if (!coverage.type) return null;
+  return records.filter((record) => CATEGORY_SETS.counters.has(text(record.type).toUpperCase())).length;
+}
 function attendanceStatus(checkInValid, checkOutValid, durationMinutes, timestampReview) {
   if (!checkInValid || !checkOutValid) return timestampReview ? 'Timestamp review required' : 'Missing / invalid timestamp';
   if (durationMinutes < 0) return 'Invalid duration';
@@ -104,7 +108,7 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
       stateName: stateNames.length === 1 ? stateNames[0] : stateNames.join(', ') || null,
       checkIn, checkOut, checkInValid, checkOutValid, timestampReview, durationMinutes, durationValid, status,
       counterPlanned,
-      counterVisited: uniqueCategoryCount(typeRecords, CATEGORY_SETS.counters, coverage),
+      counterVisited: counterTypeCount(typeRecords, coverage),
       cpVisit: uniqueCategoryCount(typeRecords, CATEGORY_SETS.cp, coverage),
       orderCount: null, sale: null,
       remarks: remarks.join(' · '), sourceRecordCount: rows.length,

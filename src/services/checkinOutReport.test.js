@@ -24,7 +24,7 @@ test('groups source visits into employee-day rows and counts unique category ide
   ], headers);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].sourceRecordCount, 6);
-  assert.equal(rows[0].counterVisited, 2);
+  assert.equal(rows[0].counterVisited, 3);
   assert.equal(rows[0].cpVisit, 2);
   assert.equal(rows[0].durationMinutes, 600);
 });
@@ -69,13 +69,24 @@ test('flags negative and over-18-hour daily spans for review', () => {
   assert.equal(rows.every((item) => !item.durationValid), true);
 });
 
-test('returns unavailable values if category IDs or planned source fields are missing', () => {
-  const missingId = buildCheckinOutReportRows([row({ typeId: '' })], headers);
+test('Counter Visited counts Check-In Type rows without requiring Type ID; CP visits still require unique IDs', () => {
+  const missingId = buildCheckinOutReportRows([row({ type: 'CHANNEL PARTNER', typeId: '' })], headers);
   const missingPlan = buildCheckinOutReportRows([row()], headers.filter((name) => name !== 'Counter Planned'));
-  assert.equal(missingId[0].counterVisited, null);
+  assert.equal(missingId[0].counterVisited, 0);
+  assert.equal(missingId[0].cpVisit, null);
   assert.equal(missingPlan[0].counterPlanned, null);
-  assert.equal(summarizeCheckinOutRows(missingId, getCheckinOutSourceCoverage(headers)).totalCountersVisited, null);
+  assert.equal(summarizeCheckinOutRows(missingId, getCheckinOutSourceCoverage(headers)).totalCountersVisited, 0);
   assert.equal(summarizeCheckinOutRows(missingPlan, getCheckinOutSourceCoverage(headers)).totalCountersPlanned, null);
+});
+
+test('Counter Visited counts only Check-In rows with DEALER or OTHER/OTHERS Type values', () => {
+  const rows = buildCheckinOutReportRows([
+    row({ id: 'dealer-1', type: 'DEALER', typeId: '' }),
+    row({ id: 'dealer-2', type: 'DEALER', typeId: '' }),
+    row({ id: 'other', type: 'OTHERS', typeId: '' }),
+    row({ id: 'cp', type: 'CHANNEL PARTNER', typeId: '' }),
+  ], headers);
+  assert.equal(rows[0].counterVisited, 3);
 });
 
 test('applies month, date, BDO, state, attendance, and remarks filters', () => {

@@ -109,9 +109,10 @@ export default function CheckinOutReport({ report }) {
     </div>
     <div className="card checkinout-source-note">
       <b>Source and pending values</b>
-      <span>Check-in rows are grouped by employee ID + date. Counter Visited counts unique Type ID values in DEALER and OTHER/OTHERS; CP Visit counts unique Type ID values in CHANNEL PARTNER and DIRECT DEALER. Secondary orders are deduplicated by Order ID, matched by employee ID (name fallback only if ID is missing) + Date Created. SALE sums Basic order value only.</span>
+      <span>Check-in rows are grouped by employee ID + date. Counter Visited counts Check-In rows whose Type is DEALER or OTHER/OTHERS. CP Visit counts unique Type ID values in CHANNEL PARTNER and DIRECT DEALER. Secondary orders are deduplicated by Order ID, matched by employee ID (name fallback only if ID is missing) + Date Created. SALE sums Basic order value only.</span>
       {!coverage.counterPlanned && <span className="checkinout-warning">COUNTER PLANNED unavailable: the loaded workbook has no Counter Planned source field.</span>}
-      {(!coverage.type || !coverage.typeId) && <span className="checkinout-warning">Visit-category counts unavailable: required source field(s) missing: {[!coverage.type && 'Type', !coverage.typeId && 'Type ID'].filter(Boolean).join(', ')}.</span>}
+      {!coverage.type && <span className="checkinout-warning">COUNTER VISITED unavailable: the loaded workbook has no Check-In Type column.</span>}
+      {(!coverage.type || !coverage.typeId) && <span className="checkinout-warning">CP VISIT unavailable: required source field(s) missing: {[!coverage.type && 'Type', !coverage.typeId && 'Type ID'].filter(Boolean).join(', ')}.</span>}
       {!coverage.state && <span className="checkinout-warning">STATE NAME unavailable: the loaded workbook has no State Name or State column.</span>}
       {!coverage.checkOut && <span className="checkinout-warning">CHECK OUT TIME unavailable: the loaded workbook has no Check Out or Check Out Time column.</span>}
       {!coverage.remark && <span className="checkinout-warning">REMARKS unavailable: the loaded workbook has no Remark or Remarks column.</span>}

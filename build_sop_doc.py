@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','1.5 · 24 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','1.6 · 24 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -215,8 +215,8 @@ table(['Report field','Source mapping and calculation'],[
 ('CHECK IN TIME / CHECK OUT TIME','Check In / Check In Time and Check Out / Check Out Time. Employee-day displays the earliest valid check-in and latest valid check-out.'),
 ('TOTAL WORKING TIME','Elapsed span from earliest valid check-in to latest valid check-out for the employee-day; valid daily spans are summed. Average divides that total by employee-day rows with both valid timestamps and a nonnegative span no longer than 18 hours.'),
 ('COUNTER PLANNED','Counter Planned, Counters Planned, or Planned Counters. Conflicting or missing values remain unavailable.'),
-('COUNTER VISITED','Distinct Type ID for Type DEALER + OTHER/OTHERS. Repeated IDs count once per employee-day. Missing Type ID values in qualifying rows make that subtotal unavailable.'),
-('CP VISIT','Distinct Type ID for Type CHANNEL PARTNER + DIRECT DEALER, counted separately from counters.'),
+('COUNTER VISITED','Count Check-In source rows whose Type is DEALER or OTHER/OTHERS within the employee-day. This uses the Check-In Type field only; Type ID is not required for Counter Visited.'),
+('CP VISIT','Distinct Type ID for Type CHANNEL PARTNER + DIRECT DEALER, counted separately from counters. Type ID is required for this unique count.'),
 ('TOTAL ORDER COUNT / SALE','Upload the separate Secondary Orders Excel/CSV in the uploader on this same tab. Order count is distinct Order ID / Order No / Invoice No matched to a Check-In employee-day by Date Created + employee ID (name fallback only when ID is missing). SALE sums Basic order value (Excel column V; legacy Basic Amount accepted) only. Other amount fields are ignored.'),
 ('REMARKS','Remark or Remarks; distinct nonblank notes from the employee-day are retained.'),
 ('Quality checks','00:00:00 requires source-convention validation and is not counted as valid. Negative spans and spans above 18 hours are flagged for review; source rows are not deleted.'),
