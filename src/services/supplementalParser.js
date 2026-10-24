@@ -45,6 +45,7 @@ export function parseSecondaryOrdersBuffer(fileBuffer) {
   const hasColumn = (...names) => names.some((name) => columns[normalize(name)]);
   if (!hasColumn('Basic order value', 'Basic Amount')) throw new Error('The secondary order report must include “Basic order value” (Excel column V) or legacy “Basic Amount”. Q.5 uses this field only.');
   if (!hasColumn('Date Created', 'Order Date', 'Date', 'Invoice Date', 'Secondary Order Date')) throw new Error('The secondary order report must include a Date Created, Order Date, or Date column to assign weekly buckets.');
+  if (!hasColumn('Order No', 'Order Number', 'Order ID', 'Sales Order No', 'Sales Order Number', 'SO Number', 'Invoice No', 'Invoice Number')) throw new Error('The secondary order report must include a unique Order No, Order ID, or Invoice No column.');
   const records = rows.map((row, index) => {
     const get = headerGetter(row, columns);
     const firstNonblank = (...names) => names.map((name) => get(name)).find((value) => text(value) !== '') ?? '';

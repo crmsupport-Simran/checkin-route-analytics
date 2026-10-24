@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
+  attachSecondaryOrders, buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
   getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
 } from './checkinOutReport.js';
 
@@ -103,4 +103,40 @@ test('exports the exact 13-column schema and marks all order-derived data pendin
   assert.deepEqual(header, CHECKIN_OUT_COLUMNS);
   assert.equal(output[10], 'PENDING SOURCE DATA');
   assert.equal(output[11], 'PENDING SOURCE DATA');
+});
+
+test('matches unique secondary orders by employee ID and date, dedupes order ID, and sums Basic Order Value', () => {
+  const rows = buildCheckinOutReportRows([
+    row({ id: 'checkin-1', dateKey: '2026-10-01', date: at(1, 0), empId: 'E-10' }),
+    row({ id: 'checkin-2', dateKey: '2026-10-02', date: at(2, 0), empId: 'E-10' }),
+  ], headers);
+  const parsed = { records: [
+    { orderId: 'SO-1', dateKey: '2026-10-01', empId: 'e-10', basicAmount: 125.5 },
+    { orderId: 'SO-1', dateKey: '2026-10-01', empId: 'E-10', basicAmount: 125.5 },
+    { orderId: 'SO-2', dateKey: '2026-10-02', empId: 'E-10', salesUserName: 'Asha Rao', basicAmount: 80 },
+    { orderId: 'SO-3', dateKey: '2026-10-01', empId: 'E-99', basicAmount: 20 },
+  ] };
+  const result = attachSecondaryOrders(rows, parsed);
+  assert.equal(result.rows[0].orderCount, 1);
+  assert.equal(result.rows[0].sale, 125.5);
+  assert.equal(result.rows[1].orderCount, 1);
+  assert.equal(result.rows[1].sale, 80);
+  assert.equal(result.stats.matchedOrders, 2);
+  assert.equal(result.stats.unmatchedOrders, 1);
+  assert.equal(summarizeCheckinOutRows(result.rows, getCheckinOutSourceCoverage(headers), true).totalSales, 205.5);
+  assert.equal(getCheckinOutExportRows(result.rows)[1][10], 1);
+  assert.equal(getCheckinOutExportRows(result.rows)[1][11], 125.5);
+});
+
+test('leaves rows outside secondary source date coverage pending and flags missing order amounts', () => {
+  const rows = buildCheckinOutReportRows([
+    row({ id: 'in-range', dateKey: '2026-10-01', date: at(1, 0) }),
+    row({ id: 'out-range', dateKey: '2026-10-02', date: at(2, 0) }),
+  ], headers);
+  const result = attachSecondaryOrders(rows, { records: [{ orderId: 'SO-1', dateKey: '2026-10-01', empId: 'E-10', basicAmount: null }] });
+  assert.equal(result.rows[0].orderCount, 1);
+  assert.equal(result.rows[0].sale, null);
+  assert.equal(result.rows[1].orderCount, null);
+  assert.equal(result.stats.missingAmounts, 1);
+  assert.equal(getCheckinOutExportRows(result.rows)[2][10], 'PENDING SOURCE DATA');
 });

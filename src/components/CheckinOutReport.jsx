@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { csvValue, money, num } from '../utils/formatUtils';
 import {
-  buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
+  attachSecondaryOrders, buildCheckinOutReportRows, CHECKIN_OUT_COLUMNS, filterCheckinOutRows,
   formatWorkingTime, getCheckinOutExportRows, getCheckinOutSourceCoverage, summarizeCheckinOutRows,
 } from '../services/checkinOutReport';
+import { parseSupplemental } from '../services/supplementalLoader';
 
 const PAGE_SIZE = 50;
 const monthLabel = (month) => month === 'all' ? 'All months' : new Date(`${month}-01T00:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -30,15 +31,22 @@ export default function CheckinOutReport({ report }) {
   const [exception, setException] = useState('');
   const [sort, setSort] = useState({ key: 'dateKey', direction: 'asc' });
   const [page, setPage] = useState(0);
+  const [secondaryOrders, setSecondaryOrders] = useState(null);
+  const [secondaryFileName, setSecondaryFileName] = useState('');
+  const [secondaryLoading, setSecondaryLoading] = useState(false);
+  const [secondaryError, setSecondaryError] = useState('');
+  const [secondaryProgress, setSecondaryProgress] = useState('');
 
   useEffect(() => { if (month !== 'all' && !months.includes(month)) setMonth(months[0] || 'all'); }, [month, months]);
-  const filteredRows = useMemo(() => filterCheckinOutRows(rows, { month, startDate, endDate, bdo, state, status, exception }), [rows, month, startDate, endDate, bdo, state, status, exception]);
+  const orderJoin = useMemo(() => attachSecondaryOrders(rows, secondaryOrders), [rows, secondaryOrders]);
+  const reportRows = orderJoin.rows;
+  const filteredRows = useMemo(() => filterCheckinOutRows(reportRows, { month, startDate, endDate, bdo, state, status, exception }), [reportRows, month, startDate, endDate, bdo, state, status, exception]);
   const sortedRows = useMemo(() => [...filteredRows].sort((left, right) => {
     const a = left[sort.key], b = right[sort.key];
     const cmp = a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : (a instanceof Date && b instanceof Date ? a - b : typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
     return sort.direction === 'asc' ? cmp : -cmp;
   }), [filteredRows, sort]);
-  const summary = useMemo(() => summarizeCheckinOutRows(filteredRows, coverage), [filteredRows, coverage]);
+  const summary = useMemo(() => summarizeCheckinOutRows(filteredRows, coverage, Boolean(secondaryOrders)), [filteredRows, coverage, secondaryOrders]);
   const bdos = useMemo(() => [...new Set(rows.map((row) => row.bdoName).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rows]);
   const states = useMemo(() => [...new Set(rows.map((row) => row.stateName).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rows]);
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
@@ -54,6 +62,15 @@ export default function CheckinOutReport({ report }) {
   };
   const toggleSort = (key) => setSort((current) => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' });
   const clearFilters = () => { setMonth('all'); setStartDate(''); setEndDate(''); setBdo(''); setState(''); setStatus(''); setException(''); };
+  const uploadSecondaryOrders = async (file) => {
+    if (!file) return;
+    setSecondaryLoading(true); setSecondaryError(''); setSecondaryProgress('Reading secondary orders…');
+    try {
+      const parsed = await parseSupplemental(file, 'secondary-orders', ({ stage }) => setSecondaryProgress(stage));
+      setSecondaryOrders(parsed); setSecondaryFileName(file.name); setSecondaryProgress('');
+    } catch (error) { setSecondaryOrders(null); setSecondaryFileName(''); setSecondaryError(error.message || 'Could not read this secondary order report.'); setSecondaryProgress(''); }
+    finally { setSecondaryLoading(false); }
+  };
 
   if (!report) return <section className="card checkinout-empty"><span className="eyebrow">CHECK-IN REPORT · ATTENDANCE</span><h2>CHECKIN-OUT REPORT</h2><p>Upload the existing Check-In / Check-Out workbook in Dashboard to build this report. No second upload is required.</p></section>;
 
@@ -68,8 +85,8 @@ export default function CheckinOutReport({ report }) {
     ['Total counters visited', displayNumber(summary.totalCountersVisited), 'Distinct Type ID under DEALER + OTHER/OTHERS.'],
     ['Counter achievement', summary.counterAchievement == null ? (summary.totalCountersPlanned === 0 ? 'N/A' : 'SOURCE DATA REQUIRED') : `${summary.counterAchievement.toFixed(1)}%`, 'Total counters visited ÷ total counters planned.'],
     ['Total CP visits', displayNumber(summary.totalCpVisits), 'Distinct Type ID under CHANNEL PARTNER + DIRECT DEALER.'],
-    ['Total order count', 'PENDING SOURCE DATA', 'Waiting for the separate Secondary Orders source.'],
-    ['Total sales', 'PENDING SOURCE DATA', 'Waiting for the separate Secondary Orders source.'],
+    ['Total order count', summary.ordersPending ? 'PENDING SOURCE DATA' : num(summary.totalOrderCount, 0), 'Unique order IDs matched to employee and order date in the uploaded Secondary Orders file.'],
+    ['Total sales', summary.salesPending ? 'PENDING SOURCE DATA' : money(summary.totalSales), 'Sum of Basic Order Value only, for matched unique orders.'],
     ['Records with missing/invalid attendance timestamps', num(summary.missingAttendance, 0), 'Midnight 00:00:00 values need source convention validation.'],
   ];
 
@@ -80,9 +97,19 @@ export default function CheckinOutReport({ report }) {
       <div><span className="eyebrow">CHECK-IN REPORT · ATTENDANCE SUMMARY</span><h2>CHECKIN-OUT REPORT</h2><p>{monthLabel(month)} · based on the currently loaded Check-In workbook.</p></div>
       <div className="checkinout-exports"><button className="secondary" onClick={exportExcel} disabled={!filteredRows.length}>Export Excel</button><button className="secondary" onClick={exportCsv} disabled={!filteredRows.length}>Export CSV</button></div>
     </div>
+    <div className="card checkinout-order-upload">
+      <div><span className="eyebrow">SECONDARY ORDER SOURCE</span><b>Upload Secondary Orders</b><small>Upload the secondary order Excel or CSV here. Order date uses Date Created; sales uses Basic order value (Excel column V) only.</small></div>
+      <label className={`checkinout-upload-button${secondaryLoading ? ' is-loading' : ''}`}>
+        {secondaryLoading ? (secondaryProgress || 'Reading…') : secondaryFileName ? 'Replace report' : 'Choose secondary report'}
+        <input aria-label="Upload Secondary Orders report" type="file" accept=".xlsx,.xls,.csv" disabled={secondaryLoading} onChange={(event) => { uploadSecondaryOrders(event.target.files?.[0]); event.target.value = ''; }} />
+      </label>
+      {secondaryFileName && <span className="checkinout-upload-meta"><b>{secondaryFileName}</b><span>{secondaryOrders?.records?.length?.toLocaleString()} source rows · {orderJoin.stats?.matchedOrders?.toLocaleString()} matched unique orders</span></span>}
+      {secondaryError && <span className="checkinout-warning" role="alert">{secondaryError}</span>}
+      {orderJoin.stats && <span className="checkinout-upload-note">Unmatched: {orderJoin.stats.unmatchedOrders.toLocaleString()} · skipped without order ID: {orderJoin.stats.skippedNoOrderId.toLocaleString()} · skipped without date: {orderJoin.stats.skippedNoDate.toLocaleString()} · skipped without employee: {orderJoin.stats.skippedNoEmployee.toLocaleString()}{orderJoin.stats.missingAmounts ? ` · missing Basic Order Value: ${orderJoin.stats.missingAmounts}` : ''}</span>}
+    </div>
     <div className="card checkinout-source-note">
       <b>Source and pending values</b>
-      <span>Check-in rows are grouped by employee ID + date. Counter Visited counts unique Type ID values in DEALER and OTHER/OTHERS; CP Visit counts unique Type ID values in CHANNEL PARTNER and DIRECT DEALER. TOTAL ORDER COUNT and SALE remain PENDING SOURCE DATA until a Secondary Orders source is inspected and connected.</span>
+      <span>Check-in rows are grouped by employee ID + date. Counter Visited counts unique Type ID values in DEALER and OTHER/OTHERS; CP Visit counts unique Type ID values in CHANNEL PARTNER and DIRECT DEALER. Secondary orders are deduplicated by Order ID, matched by employee ID (name fallback only if ID is missing) + Date Created. SALE sums Basic order value only.</span>
       {!coverage.counterPlanned && <span className="checkinout-warning">COUNTER PLANNED unavailable: the loaded workbook has no Counter Planned source field.</span>}
       {(!coverage.type || !coverage.typeId) && <span className="checkinout-warning">Visit-category counts unavailable: required source field(s) missing: {[!coverage.type && 'Type', !coverage.typeId && 'Type ID'].filter(Boolean).join(', ')}.</span>}
       {!coverage.state && <span className="checkinout-warning">STATE NAME unavailable: the loaded workbook has no State Name or State column.</span>}
@@ -102,10 +129,10 @@ export default function CheckinOutReport({ report }) {
     </div>
     <section className="card checkinout-table-card">
       <div className="section-head"><div><span className="eyebrow">DETAIL REPORT</span><h3>{filteredRows.length.toLocaleString()} employee-day records</h3><p>00:00:00 timestamps are flagged for validation, not accepted as valid attendance.</p></div><span>Page {page + 1} / {pageCount}</span></div>
-      <div className="checkinout-table-scroll"><table className="checkinout-table"><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} aria-sort={sort.key === sortKeys[index] ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button onClick={() => toggleSort(sortKeys[index])}>{label}{sort.key === sortKeys[index] ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => <tr key={row.key} className={`checkinout-row-${row.status.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`} title={`Attendance status: ${row.status}`}>{CHECKIN_OUT_COLUMNS.map((label, index) => <td key={label} className={index >= 10 && index <= 11 ? 'checkinout-pending-cell' : ''}>{visibleExportRows[rowIndex][index]}</td>)}</tr>)}</tbody></table></div>
+      <div className="checkinout-table-scroll"><table className="checkinout-table"><thead><tr>{CHECKIN_OUT_COLUMNS.map((label, index) => <th key={label} aria-sort={sort.key === sortKeys[index] ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button onClick={() => toggleSort(sortKeys[index])}>{label}{sort.key === sortKeys[index] ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => <tr key={row.key} className={`checkinout-row-${row.status.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}`} title={`Attendance status: ${row.status}`}>{CHECKIN_OUT_COLUMNS.map((label, index) => <td key={label} className={index >= 10 && index <= 11 && (index === 10 ? row.orderCount == null : row.sale == null) ? 'checkinout-pending-cell' : ''}>{index === 11 && row.sale != null ? num(row.sale, 2) : visibleExportRows[rowIndex][index]}</td>)}</tr>)}</tbody></table></div>
       {!filteredRows.length && <p className="empty checkinout-no-rows">No records match the active filters.</p>}
       <div className="q3-pagination"><span>{filteredRows.length ? `${(page * PAGE_SIZE + 1).toLocaleString()}–${Math.min((page + 1) * PAGE_SIZE, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()}` : '0 records'}</span><button className="secondary" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</button><button className="secondary" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next</button></div>
     </section>
-    <p className="checkinout-footnote">Total working time is calculated per employee-day as earliest valid Check In to latest valid Check Out; it is not a sum of visit durations. Durations over 18 hours or negative spans are flagged for review. Order fields are excluded from Check-In order count and Basic Order Value, pending verified Secondary Orders integration.</p>
+    <p className="checkinout-footnote">Total working time is calculated per employee-day as earliest valid Check In to latest valid Check Out; it is not a sum of visit durations. Durations over 18 hours or negative spans are flagged for review. Uploaded order data is matched by employee and date and is held in this browser tab only.</p>
   </section>;
 }

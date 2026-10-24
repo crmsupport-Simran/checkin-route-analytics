@@ -9,6 +9,7 @@ const text = (value) => String(value ?? '').trim();
 const dayKey = (date) => date instanceof Date && Number.isFinite(date.getTime())
   ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '';
 const idFor = (record) => text(record.empId) ? `id:${text(record.empId).toLocaleUpperCase().replace(/\s+/g, ' ')}` : '';
+const normalizedIdentity = (value) => normalize(value).toLocaleUpperCase();
 const isMidnightTime = (value, raw) => Boolean(text(raw)) && ((value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0 && value.getSeconds() === 0)
   || raw === 0 || /^0?0:00(?::00)?$/.test(text(raw)));
 const validTime = (value, raw) => Boolean(text(raw)) && value instanceof Date && Number.isFinite(value.getTime()) && !isMidnightTime(value, raw);
@@ -99,7 +100,7 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
     const status = attendanceStatus(checkInValid, checkOutValid, durationMinutes, timestampReview);
     return {
       key: group.key, dateKey: group.date, date: fmtDate(group.date), month,
-      bdoName: firstName, employeeKey: group.identity || (firstName ? `name:${normalize(firstName)}` : `source:${group.key}`),
+      bdoName: firstName, empId: text(rows.find((row) => text(row.empId))?.empId), employeeKey: group.identity || (firstName ? `name:${normalize(firstName)}` : `source:${group.key}`),
       stateName: stateNames.length === 1 ? stateNames[0] : stateNames.join(', ') || null,
       checkIn, checkOut, checkInValid, checkOutValid, timestampReview, durationMinutes, durationValid, status,
       counterPlanned,
@@ -109,6 +110,37 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
       remarks: remarks.join(' · '), sourceRecordCount: rows.length,
     };
   }).sort((a, b) => (a.dateKey || '').localeCompare(b.dateKey || '') || a.bdoName.localeCompare(b.bdoName));
+}
+
+export function attachSecondaryOrders(rows = [], parsed = null) {
+  if (!parsed?.records?.length) return { rows, stats: null };
+  const validDates = parsed.records.map((record) => record.dateKey).filter(Boolean).sort();
+  const stats = { sourceRows: parsed.records.length, uniqueOrders: 0, matchedOrders: 0, unmatchedOrders: 0, skippedNoOrderId: 0, skippedNoDate: 0, skippedNoEmployee: 0, missingAmounts: 0, minDate: validDates[0] || '', maxDate: validDates.at(-1) || '' };
+  const byEmployeeDay = new Map();
+  rows.forEach((row, index) => {
+    if (!row.dateKey) return;
+    const identity = row.empId ? `id:${normalizedIdentity(row.empId)}` : row.bdoName ? `name:${normalizedIdentity(row.bdoName)}` : '';
+    if (identity) byEmployeeDay.set(`${identity}|${row.dateKey}`, index);
+  });
+  const enriched = rows.map((row) => row.dateKey && stats.minDate && row.dateKey >= stats.minDate && row.dateKey <= stats.maxDate
+    ? { ...row, orderCount: 0, sale: 0 } : row);
+  const seen = new Set();
+  for (const record of parsed.records) {
+    if (!record.orderId) { stats.skippedNoOrderId++; continue; }
+    if (!record.dateKey) { stats.skippedNoDate++; continue; }
+    const identity = record.empId ? `id:${normalizedIdentity(record.empId)}` : record.salesUserName ? `name:${normalizedIdentity(record.salesUserName)}` : '';
+    if (!identity) { stats.skippedNoEmployee++; continue; }
+    const key = normalizedIdentity(record.orderId);
+    if (seen.has(key)) continue;
+    seen.add(key); stats.uniqueOrders++;
+    const rowIndex = byEmployeeDay.get(`${identity}|${record.dateKey}`);
+    if (rowIndex == null) { stats.unmatchedOrders++; continue; }
+    const row = enriched[rowIndex];
+    row.orderCount += 1; stats.matchedOrders++;
+    if (record.basicAmount == null) { row.sale = null; stats.missingAmounts++; }
+    else if (row.sale != null) row.sale += record.basicAmount;
+  }
+  return { rows: enriched, stats };
 }
 
 export function filterCheckinOutRows(rows = [], filters = {}) {
@@ -125,8 +157,8 @@ export function filterCheckinOutRows(rows = [], filters = {}) {
   });
 }
 
-export function summarizeCheckinOutRows(rows = [], coverage = {}) {
-    const identitySet = new Set(rows.map((row) => row.employeeKey).filter((key) => key && !key.startsWith('source:')));
+export function summarizeCheckinOutRows(rows = [], coverage = {}, secondaryOrdersLoaded = false) {
+  const identitySet = new Set(rows.map((row) => row.employeeKey).filter((key) => key && !key.startsWith('source:')));
   const validWorkingRows = rows.filter((row) => row.durationValid);
   const totalWorkingMinutes = validWorkingRows.reduce((sum, row) => sum + row.durationMinutes, 0);
   const plannedComplete = coverage.counterPlanned && rows.every((row) => row.counterPlanned != null);
@@ -145,7 +177,10 @@ export function summarizeCheckinOutRows(rows = [], coverage = {}) {
     counterAchievement: plannedComplete && countersComplete && planned > 0 ? (visited / planned) * 100 : null,
     totalCpVisits: cpComplete ? rows.reduce((sum, row) => sum + row.cpVisit, 0) : null,
     missingAttendance: rows.filter((row) => !row.checkInValid || !row.checkOutValid || !row.durationValid).length,
-    ordersPending: true, salesPending: true,
+    totalOrderCount: secondaryOrdersLoaded && rows.every((row) => row.orderCount != null) ? rows.reduce((sum, row) => sum + row.orderCount, 0) : null,
+    totalSales: secondaryOrdersLoaded && rows.every((row) => row.sale != null) ? rows.reduce((sum, row) => sum + row.sale, 0) : null,
+    ordersPending: !secondaryOrdersLoaded || rows.some((row) => row.orderCount == null),
+    salesPending: !secondaryOrdersLoaded || rows.some((row) => row.sale == null),
   };
 }
 
@@ -154,7 +189,7 @@ export function getCheckinOutExportRows(rows = []) {
     row.date, row.month, row.bdoName || 'SOURCE DATA REQUIRED', row.stateName || 'SOURCE DATA REQUIRED',
     fmtTime(row.checkIn), fmtTime(row.checkOut), Number.isFinite(row.durationMinutes) ? (row.durationMinutes < 0 ? 'INVALID DURATION' : formatWorkingTime(row.durationMinutes)) : 'SOURCE DATA REQUIRED',
     row.counterPlanned ?? 'SOURCE DATA REQUIRED', row.counterVisited ?? 'SOURCE DATA REQUIRED', row.cpVisit ?? 'SOURCE DATA REQUIRED',
-    'PENDING SOURCE DATA', 'PENDING SOURCE DATA', row.remarks,
+    row.orderCount ?? 'PENDING SOURCE DATA', row.sale == null ? 'PENDING SOURCE DATA' : row.sale, row.remarks,
   ]);
   return [CHECKIN_OUT_COLUMNS, ...data];
 }
