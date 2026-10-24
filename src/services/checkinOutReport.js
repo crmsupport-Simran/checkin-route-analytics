@@ -40,6 +40,11 @@ const stateFromText = (...values) => {
   }
   return null;
 };
+const mostCommonState = (values) => {
+  const counts = new Map();
+  for (const value of values) counts.set(value, (counts.get(value) || 0) + 1);
+  return [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+};
 const isMidnightTime = (value, raw) => Boolean(text(raw)) && ((value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0 && value.getSeconds() === 0)
   || raw === 0 || /^0?0:00(?::00)?$/.test(text(raw)));
 const validTime = (value, raw) => Boolean(text(raw)) && value instanceof Date && Number.isFinite(value.getTime()) && !isMidnightTime(value, raw);
@@ -131,7 +136,9 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
     const typeRecords = rows.map((row) => ({ type: row.type, typeId: row.typeId }));
     const remarks = [...new Set(rows.map((row) => text(row.remark)).filter(Boolean))];
     const firstName = rows.map((row) => text(row.salesUserName)).find(Boolean) || '';
-    const stateNames = [...new Set(rows.map((row) => stateFromText(row.stateName, row.checkInLocation, row.checkOutLocation)).filter(Boolean))];
+    const explicitStates = rows.map((row) => stateFromText(row.stateName)).filter(Boolean);
+    const locationStates = rows.map((row) => stateFromText(row.checkInLocation, row.checkOutLocation)).filter(Boolean);
+    const stateName = mostCommonState(explicitStates) || mostCommonState(locationStates);
     const reportingManagers = [...new Set(rows.map((row) => text(row.reportingManager)).filter(Boolean))];
     const zonalManagers = [...new Set(rows.map((row) => text(row.zonalManager)).filter(Boolean))];
     const month = group.date ? new Date(`${group.date}T00:00:00`).toLocaleString('en-US', { month: 'short' }).toUpperCase() : '';
@@ -139,7 +146,7 @@ export function buildCheckinOutReportRows(records = [], headers = []) {
     return {
       key: group.key, dateKey: group.date, date: fmtDate(group.date), month,
       bdoName: firstName, empId: text(rows.find((row) => text(row.empId))?.empId), employeeKey: group.identity || (firstName ? `name:${normalize(firstName)}` : `source:${group.key}`),
-      stateName: stateNames.length === 1 ? stateNames[0] : stateNames.join(', ') || null,
+      stateName,
       reportingManager: reportingManagers.join(', ') || null, zonalManager: zonalManagers.join(', ') || null,
       checkIn, checkOut, checkInValid, checkOutValid, timestampReview, durationMinutes, durationValid, status,
       counterPlanned,

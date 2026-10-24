@@ -39,6 +39,18 @@ test('reports only canonical Indian State/UT names from state fields or Check-In
   assert.equal(getCheckinOutSourceCoverage(['Date', 'Check In Location']).state, true);
 });
 
+test('assigns one State/UT per employee-day, preferring explicit state fields then the most frequent location match', () => {
+  const rows = buildCheckinOutReportRows([
+    row({ id: 'explicit-a', empId: 'E-20', stateName: 'Maharashtra', checkInLocation: 'Haryana, India' }),
+    row({ id: 'explicit-b', empId: 'E-20', stateName: 'Maharashtra', checkOutLocation: 'Gujarat, India' }),
+    row({ id: 'location-a', empId: 'E-21', stateName: '', checkInLocation: 'Jaipur, Rajasthan, India' }),
+    row({ id: 'location-b', empId: 'E-21', stateName: '', checkOutLocation: 'Jaipur, Rajasthan, India' }),
+    row({ id: 'location-c', empId: 'E-21', stateName: '', checkInLocation: 'Delhi, India' }),
+  ], [...headers, 'Check In Location', 'Check Out Location']);
+  assert.deepEqual(rows.map((item) => item.stateName), ['Maharashtra', 'Rajasthan']);
+  assert.ok(rows.every((item) => !item.stateName?.includes(',')));
+});
+
 test('uses Emp ID for grouping across names and keeps undated or unidentified records distinct', () => {
   const rows = buildCheckinOutReportRows([
     row({ id: 'one', salesUserName: 'Asha Rao' }), row({ id: 'two', salesUserName: 'Asha R.' }),
