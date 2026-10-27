@@ -5,10 +5,12 @@ import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../services/q1Q3Rep
 import {
   buildWeeklySalesPerformanceExportRows,
   calculateWeeklySalesPerformanceAddon,
+  getWeeklySalesPlanMonthOptions,
   isValidManualActual,
   isValidPlanValue,
   readManualActuals,
   readWeeklySalesPlanOverrides,
+  saveWeeklySalesPlanOverrides,
   WEEKLY_SALES_PERFORMANCE_STORAGE_KEY,
   WEEKLY_SALES_PLAN_STORAGE_KEY,
 } from '../services/weeklySalesPerformanceAddon';
@@ -30,6 +32,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const prepared = useMemo(() => prepareQ1Q3ReportRows(report?.records || []), [report]);
   const managerKpiPrepared = useMemo(() => prepareJointWorkingRows(report?.records || []), [report]);
   const months = prepared.months;
+  const monthOptions = useMemo(() => getWeeklySalesPlanMonthOptions(months), [months]);
   const [monthOverride, setMonthOverride] = useState('');
   const [manualActuals, setManualActuals] = useState(() => readManualActuals());
   const [planOverrides, setPlanOverrides] = useState(() => readWeeklySalesPlanOverrides());
@@ -42,7 +45,8 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   useEffect(() => {
     try { localStorage.setItem(WEEKLY_SALES_PLAN_STORAGE_KEY, JSON.stringify(planOverrides)); } catch { /* Browser storage can be disabled. */ }
   }, [planOverrides]);
-  const month = months.includes(monthOverride) ? monthOverride : (months.at(-1) || '');
+  const month = monthOverride || months.at(-1) || getWeeklySalesPlanMonthOptions([], new Date(), 0)[0];
+  const hasMonthData = Boolean(prepared.rowsByMonth?.has(month));
   const existingResult = useMemo(() => report && month ? calculateQ1Q3Reports(prepared, month) : null, [report, prepared, month]);
   const territoryKpiResult = useMemo(() => report && month ? calculateJointWorkingKpis(managerKpiPrepared, month, { includeTerritory: true }) : null, [report, managerKpiPrepared, month]);
   const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, null, territoryKpiResult) : null, [prepared, month, existingResult, territoryKpiResult]);
@@ -57,12 +61,13 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const savePlanEdit = () => {
     if (!addon || !addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))) return;
     const saved = Object.fromEntries(addon.rows.map((row) => [row.key, Object.fromEntries(addon.weeks.map((week) => [week.key, Number(planDraft[row.key][week.key])]))]));
-    setPlanOverrides((current) => ({ ...current, [month]: saved }));
+    setPlanOverrides((current) => saveWeeklySalesPlanOverrides(current, month, saved));
     setEditingPlans(false);
   };
   const getActual = (row, week) => {
     if (['retainedRetailers', 'newRetailers'].includes(row.key)) return monthManualActuals[row.key]?.[week.key] ?? 'PENDING';
     if (!report && ['ssp', 'jointDays', 'retailersVisited', 'orders', 'orderAmount', 'averageOrderValue'].includes(row.key)) return 'UPLOAD CHECK-IN REPORT';
+    if (!hasMonthData) return 'PENDING';
     const value = addon.actualByRow[row.key]?.[week.key];
     if (value !== null && value !== undefined) return Number(value).toLocaleString('en-IN');
     if (row.key === 'averageOrderValue') return 'PENDING';
@@ -80,11 +85,11 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
 
   return <main className="weekly-sales-dashboard">
     <section className="joint-kpi-heading"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>WEEKLY SALES PERFORMANCE</h2><p>Plan vs actual · Q.4/Q.5 use Check-In Secondary data and Average Order Value is calculated.</p></div>
-      <div className="joint-kpi-controls"><div><label htmlFor="weekly-sales-month">Month</label><select id="weekly-sales-month" value={month} onChange={(event) => setMonthOverride(event.target.value)} disabled={!months.length || editingPlans}><option value="" disabled>Select month</option>{months.map((key) => <option key={key} value={key}>{monthLabel(key)}</option>)}</select></div><button className="secondary" disabled={!addon || editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Export CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWorkbook}>Export Excel</button></div>
+      <div className="joint-kpi-controls"><div><label htmlFor="weekly-sales-month">Month</label><select id="weekly-sales-month" value={month} onChange={(event) => setMonthOverride(event.target.value)} disabled={editingPlans}>{monthOptions.map((key) => <option key={key} value={key}>{monthLabel(key)}</option>)}</select></div><button className="secondary" disabled={!addon || editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Export CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWorkbook}>Export Excel</button></div>
     </section>
     {!month && <section className="card q3-empty"><h3>Select a month</h3><p>Upload a Check-In report to populate actuals.</p></section>}
     {addon && <section className="card q3-bucket-card weekly-sales-addon">
-      <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? 'Edit the plan targets below; values save for this month.' : 'Plans are editable per week. Old/new retailer actuals are manual; all other actuals come from the Check-In report.'}</small></div></div>
+      <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? `Editing ${monthLabel(month)}; saving changes only this month’s plan.` : `Plans are saved separately for each month in this browser. ${hasMonthData ? 'Actuals use this month’s Check-In data.' : 'No Check-In rows for this month yet; actuals remain pending.'} Old/new retailer actuals are manual.`}</small></div></div>
       <p className="q3-scope-note">Weekly buckets: 1–7, 8–15, 16–23, and 24–month end. Existing Q1–Q3 and Manager-only KPI rules are not changed.</p>
       <div className="table-scroll"><table className="q3-bucket-table weekly-sales-table"><thead><tr><th rowSpan="2">KPI</th>{addon.weeks.map((week) => <th key={week.key} colSpan="2">{week.label}</th>)}</tr><tr>{addon.weeks.flatMap((week) => [<th key={`${week.key}-plan`}>PLAN</th>, <th key={`${week.key}-actual`}>ACTUAL</th>])}</tr></thead>
         <tbody>{addon.rows.map((row) => <tr key={row.key}><th><span>{row.label}</span><small>{row.actualSource}</small></th>{addon.weeks.flatMap((week) => {

@@ -20,6 +20,22 @@ export const WEEKLY_SALES_PERFORMANCE_WEEKS = Object.freeze([
   { key: 'week4', label: 'WEEK-4 (24–month end)' },
 ]);
 
+export function getWeeklySalesPlanMonthOptions(dataMonths = [], now = new Date(), futureMonths = 12) {
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const validDataMonths = dataMonths.filter((month) => /^\d{4}-(0[1-9]|1[0-2])$/.test(month));
+  const lastAvailableMonth = [...validDataMonths, currentMonth].sort().at(-1) || currentMonth;
+  const [year, month] = lastAvailableMonth.split('-').map(Number);
+  const futureOptions = Array.from({ length: Math.max(0, futureMonths) + 1 }, (_, index) => {
+    const date = new Date(year, month - 1 + index, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  });
+  return [...new Set([...validDataMonths, ...futureOptions])].sort();
+}
+
+export function saveWeeklySalesPlanOverrides(currentOverrides = {}, month, monthPlans) {
+  return { ...currentOverrides, [month]: monthPlans };
+}
+
 const normalize = (value) => String(value ?? '').trim().replace(/\s+/g, ' ').toLocaleUpperCase();
 const SECONDARY_ORDER_TYPES = new Set(['SECONDARY', 'SECONDARY ORDER COUNT']);
 const isSecondarySalesType = (value) => normalize(value).split(',').some((token) => SECONDARY_ORDER_TYPES.has(token.trim()));

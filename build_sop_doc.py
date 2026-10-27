@@ -162,7 +162,7 @@ bullets([
 'Identifier priority: Dealer Channel Partner Code, then Dealer Channel Partner, then Company Name. Repeated source rows map to one weekly distributor. Audit data shows identifier source and contributing source rows.'
 ])
 doc.add_heading('9. Weekly Sales Performance',level=1)
-para('This is a plan-versus-actual table with eight KPIs and four weekly buckets. Plans are editable per week. Most actual values are calculated from Check-In; Old Retailer Retained and New Retailer Added are manual actuals.')
+para('This is a plan-versus-actual table with eight KPIs and four weekly buckets. Plans are editable per week for the selected month; the month picker includes the following 12 months even when no Check-In rows exist yet. Each month’s plan overrides are saved separately in this browser, so saving next month does not replace a prior month. For a future month without source rows, calculated actuals remain Pending. Most actual values are calculated from Check-In; Old Retailer Retained and New Retailer Added are manual actuals.')
 table(['KPI row','Plan / actual source and calculation'],[
 ('Total No. of SSP','Plan is editable. Actual is distinct eligible Manager + Territory employee identities per week with Joint Working = YES. Emp ID is preferred; normalized Sales User Name is fallback. This count has no Q1–Q3 Zonal Manager exclusion.'),
 ('Total Days of Joint Working','Plan is editable. Actual counts unique eligible employee identity + date pairs per week with Joint Working = YES.'),
@@ -170,8 +170,8 @@ table(['KPI row','Plan / actual source and calculation'],[
 ('No. of Orders Received from the Retailer Visited','Actual counts unique Type ID per week among Check-In rows with Joint Working = YES and Designation Sales Type = SECONDARY (or SECONDARY ORDER COUNT). Evidence is positive Secondary Order Count if that field exists; if it is absent, positive Basic Order Value is used. Blank Type IDs do not count.'),
 ('Total Order Amount','Actual sums Basic Order Value from Check-In rows with Joint Working = YES and Secondary sales type, by the selected week. Display amount rounds upward to the next whole rupee. This is the locked current rule for the weekly table.'),
 ('Average Order Value','Calculated as weekly Total Order Amount divided by the unique order-retailer count above, then rounded upward to a whole rupee. If there are no counted retailers, it displays Pending.'),
-('Old Retailer Retained','Weekly plan is editable; actual is typed manually and saved in this browser. Blank actual displays Pending.'),
-('New Retailer Added','Weekly plan is editable; actual is typed manually and saved in this browser. Blank actual displays Pending.')],[2.4,5.05])
+('Old Retailer Retained','Weekly plan is editable per month; actual is typed manually and saved by month in this browser. Blank actual displays Pending.'),
+('New Retailer Added','Weekly plan is editable per month; actual is typed manually and saved by month in this browser. Blank actual displays Pending.')],[2.4,5.05])
 para('Weekly order count and amount are calculated from the Check-In report only, using Joint Working and Secondary sales fields. The dashboard no longer includes a separate Secondary Sales workbook uploader; Basic Order Value and secondary order evidence in the Check-In source continue to drive these actuals.')
 para('Known October 2026 reconciliation figures previously confirmed by the user for Total Order Amount are W1 ₹14,85,542; W2 ₹15,42,515; W3 ₹15,29,642. These are a cross-check against the relevant source workbook, not hardcoded outputs. W4 depends on records in the selected month after the 23rd.')
 

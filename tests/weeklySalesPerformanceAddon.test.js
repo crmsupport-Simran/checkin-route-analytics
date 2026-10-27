@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../src/services/jointWorkingKpi.js';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../src/services/q1Q3ReportsService.js';
-import { buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
+import { buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
 
 const row = (date, extra = {}) => ({
   date, salesUserName: 'Senior A', empId: '100', designation: 'MANAGER-SALES',
@@ -91,6 +91,13 @@ test('plan edits validate nonnegative numeric targets and load month-specific sa
   const storage = { getItem: (key) => key === WEEKLY_SALES_PLAN_STORAGE_KEY ? saved : null };
   assert.deepEqual(readWeeklySalesPlanOverrides(storage), { '2026-10': { ssp: { week1: 60 } } });
   assert.deepEqual(readWeeklySalesPlanOverrides({ getItem: () => '{bad' }), {});
+  const future = getWeeklySalesPlanMonthOptions(['2026-10'], new Date(2026, 9, 27));
+  assert.ok(future.includes('2026-10'));
+  assert.ok(future.includes('2026-11'), 'next-month plan should be selectable without next-month source data');
+  const priorMonthPlans = { '2026-10': { ssp: { week1: 60 } } };
+  const withNextMonth = saveWeeklySalesPlanOverrides(priorMonthPlans, '2026-11', { ssp: { week1: 70 } });
+  assert.deepEqual(withNextMonth['2026-10'], { ssp: { week1: 60 } }, 'saving a next-month plan must preserve October');
+  assert.deepEqual(withNextMonth['2026-11'], { ssp: { week1: 70 } });
   assert.equal(WEEKLY_SALES_PERFORMANCE_STORAGE_KEY.length > 0, true);
 });
 
