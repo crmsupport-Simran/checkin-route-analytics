@@ -63,18 +63,62 @@ function newWeekSets() {
   return Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, new Set()]));
 }
 
+function collectWeeklyJointDayGroups(prepared, month) {
+  const groups = new Map();
+  for (const row of prepared.rowsByMonth?.get(month) || []) {
+    const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
+    if (!bucket || row.jointWorking !== 'YES' || !allowedSenior.has(normalize(row.designation))) continue;
+    const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
+    if (!identity) continue;
+    const pairKey = `${bucket}|${identity}|${row.dateKey}`;
+    const group = groups.get(pairKey) || { bucket, identity, dateKey: row.dateKey, rows: [] };
+    group.rows.push(row);
+    groups.set(pairKey, group);
+  }
+  return [...groups.values()];
+}
+
+export function buildWeeklyJointDaysAudit(prepared, month, addon) {
+  const groups = collectWeeklyJointDayGroups(prepared, month);
+  const rawRows = [];
+  for (const group of groups) {
+    const sourceRows = [...group.rows].sort((a, b) => a.sourceRow - b.sourceRow);
+    sourceRows.forEach((row, index) => rawRows.push({
+      week: WEEKLY_SALES_PERFORMANCE_WEEKS.find(({ key }) => key === group.bucket)?.label || group.bucket,
+      weekKey: group.bucket,
+      weekActual: addon?.actualByRow?.jointDays?.[group.bucket] ?? groups.filter(({ bucket }) => bucket === group.bucket).length,
+      uniqueEmployeeDatePairContribution: index === 0 ? 1 : 0,
+      sourceRowsForPair: sourceRows.length,
+      pairKey: `${group.identity}|${group.dateKey}`,
+      date: row.dateLabel || row.dateKey,
+      dateKey: row.dateKey,
+      employee: row.salesUserName,
+      employeeId: row.empId,
+      employeeDesignation: row.designationLabel || row.designation,
+      jointWorking: row.jointWorkingLabel || row.jointWorking,
+      jointWorkingName: row.seniorLabel || row.seniorName || '',
+      jointWorkingDesignation: row.jointWorkingDesignationLabel || row.jointWorkingDesignation || '',
+      type: row.typeLabel || row.type || '',
+      designationSalesType: row.designationSalesTypeLabel || row.designationSalesType || '',
+      sourceRow: row.sourceRow,
+    }));
+  }
+  return rawRows.sort((a, b) => a.weekKey.localeCompare(b.weekKey) || a.dateKey.localeCompare(b.dateKey) || a.employee.localeCompare(b.employee) || a.sourceRow - b.sourceRow);
+}
+
 export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
   const ssp = newWeekSets();
   const jointDays = newWeekSets();
   const orderRetailersByWeek = newWeekSets();
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
+  const jointDayGroups = collectWeeklyJointDayGroups(prepared, month);
+  for (const group of jointDayGroups) jointDays[group.bucket].add(`${group.identity}|${group.dateKey}`);
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     const bucket = getWeeklySalesPerformanceBucket(row.dateKey, month);
     if (!bucket || row.jointWorking !== 'YES' || !allowedSenior.has(normalize(row.designation))) continue;
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
     if (identity) {
       ssp[bucket].add(identity);
-      jointDays[bucket].add(`${identity}|${row.dateKey}`);
     }
   }
   for (const row of prepared.rowsByMonth?.get(month) || []) {

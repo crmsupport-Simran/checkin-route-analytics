@@ -4,6 +4,7 @@ import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../services/
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../services/q1Q3ReportsService';
 import {
   buildWeeklySalesPerformanceExportRows,
+  buildWeeklyJointDaysAudit,
   calculateWeeklySalesPerformanceAddon,
   getWeeklySalesPlanMonthOptions,
   isValidManualActual,
@@ -53,6 +54,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const monthManualActuals = manualActuals[month] || {};
   const monthPlans = planOverrides[month] || {};
   const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans), [addon, monthManualActuals, monthPlans]);
+  const jointDaysAuditRows = useMemo(() => report && addon ? buildWeeklyJointDaysAudit(prepared, month, addon) : [], [report, addon, prepared, month]);
   const beginPlanEdit = () => {
     if (!addon) return;
     setPlanDraft(Object.fromEntries(addon.rows.map((row) => [row.key, Object.fromEntries(addon.weeks.map((week) => [week.key, monthPlans[row.key]?.[week.key] ?? row.plan]))])));
@@ -82,6 +84,38 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(exportRows), 'Weekly Sales');
     XLSX.writeFile(workbook, `weekly-sales-performance-${month}.xlsx`);
   };
+  const jointAuditColumns = [
+    ['Week', 'week'], ['Week Actual', 'weekActual'], ['Unique Employee-Date Pair Contribution', 'uniqueEmployeeDatePairContribution'],
+    ['Source Rows for Pair', 'sourceRowsForPair'], ['Pair Key', 'pairKey'], ['Date', 'date'], ['Date Key', 'dateKey'],
+    ['BDO / Employee Name', 'employee'], ['Employee ID', 'employeeId'], ['Employee Designation', 'employeeDesignation'],
+    ['Joint Working', 'jointWorking'], ['Joint Working Name', 'jointWorkingName'], ['Joint Working Designation', 'jointWorkingDesignation'],
+    ['Type', 'type'], ['Designation Sales Type', 'designationSalesType'], ['Check-In Source Row', 'sourceRow'],
+  ];
+  const exportJointAuditCsv = () => downloadCsv([
+    jointAuditColumns.map(([label]) => label),
+    ...jointDaysAuditRows.map((row) => jointAuditColumns.map(([, key]) => row[key])),
+  ], `weekly-joint-working-source-audit-${month}.csv`);
+  const exportJointAuditWorkbook = () => {
+    const workbook = XLSX.utils.book_new();
+    const summaryRows = [
+      ['WEEKLY JOINT WORKING ACTUAL SOURCE AUDIT'],
+      ['Month', monthLabel(month)],
+      ['Calculation', 'Distinct Manager + Territory employee identity/date pairs with Joint Working = YES. Secondary partner and Type filters are not applied to this actual.'],
+      ['Reconciliation', 'Filter Raw Source Rows by Week and sum Unique Employee-Date Pair Contribution; the total equals Week Actual. Duplicate Check-In rows for a pair are listed with contribution 0.'],
+      [],
+      ['Week', 'Actual Unique Employee-Date Pairs', 'Raw Qualifying Check-In Rows'],
+      ...addon.weeks.map((week) => [week.label, addon.actualByRow.jointDays[week.key] ?? 0, jointDaysAuditRows.filter((row) => row.weekKey === week.key).length]),
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(summaryRows), 'Weekly Summary');
+    const rawSheet = XLSX.utils.aoa_to_sheet([
+      jointAuditColumns.map(([label]) => label),
+      ...jointDaysAuditRows.map((row) => jointAuditColumns.map(([, key]) => row[key])),
+    ]);
+    rawSheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(jointAuditColumns.length - 1)}${Math.max(1, jointDaysAuditRows.length + 1)}` };
+    rawSheet['!cols'] = [12, 13, 21, 15, 30, 14, 14, 28, 15, 28, 14, 26, 34, 20, 24, 18].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(workbook, rawSheet, 'Raw Source Rows');
+    XLSX.writeFile(workbook, `weekly-joint-working-source-audit-${month}.xlsx`);
+  };
 
   return <main className="weekly-sales-dashboard">
     <section className="joint-kpi-heading"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>WEEKLY SALES PERFORMANCE</h2><p>Plan vs actual · Q.4/Q.5 use Check-In Secondary data and Average Order Value is calculated.</p></div>
@@ -99,6 +133,8 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
           return [<td className="weekly-plan" key={`${week.key}-plan`}>{editingPlans ? <input aria-label={`${row.label} ${week.label} plan`} type="number" min="0" step="any" value={planValue} className={isValidPlanValue(planValue) ? '' : 'invalid'} onChange={(event) => setPlanDraft((current) => ({ ...current, [row.key]: { ...(current[row.key] || {}), [week.key]: event.target.value } }))}/> : Number(planValue).toLocaleString('en-IN')}</td>, <td key={`${week.key}-actual`} className="weekly-actual">{isManual ? <input aria-label={`${row.label} ${week.label} actual`} type="number" min="0" step="any" value={monthManualActuals[row.key]?.[week.key] ?? ''} className={isValidManualActual(monthManualActuals[row.key]?.[week.key] ?? '') ? '' : 'invalid'} onChange={(event) => updateManual(row.key, week.key, event.target.value)} placeholder="Pending"/> : typeof actual === 'string' && !/^\d[\d,.]*$/.test(actual) ? <span className="weekly-status">{actual}</span> : actual}</td>];
         })}</tr>)}</tbody></table></div>
       <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts unique Manager + Territory employee/date pairs with Joint Working = YES, as in the supplied weekly pivot. This row does not apply Q1's additional Joint Working partner or Type filters. “No. of Retailers Visited” uses Q.2 from the Joint Working KPI Dashboard · Manager + Territory Designations, by week. Q4 counts unique Check-In Type IDs with Joint Working = YES and Secondary sales type, with a positive Secondary Order Count or, if that field is absent, positive Basic Order Value. Q5 sums Basic Order Value from qualifying Check-In rows; currency actuals and average order value are rounded up to whole rupees. Average Order Value = Q5 ÷ Q4. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
+      <p className="q3-scope-note">The Joint Working Source Audit exports the Check-In rows behind the employee/date count. For Week-1, sum “Unique Employee-Date Pair Contribution” to reconcile the displayed actual (106); duplicate source rows have contribution 0. This actual uses Joint Working = YES and the approved Manager + Territory employee designation list; the BDO/CP/Senior phrase shown in the row description does not add extra source filters.</p>
+      <div className="q3-export-bar"><b>Joint Working Actual Source</b><button className="secondary" disabled={!hasMonthData || editingPlans} onClick={exportJointAuditCsv}>Joint Working Audit CSV</button><button className="secondary" disabled={!hasMonthData || editingPlans} onClick={exportJointAuditWorkbook}>Joint Working Audit Excel</button></div>
       <div className="q3-export-bar"><b>Downloads</b><button className="secondary" disabled={editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Weekly Plan vs Actual CSV</button><button className="secondary" disabled={editingPlans} onClick={exportWorkbook}>Weekly Plan vs Actual Excel</button></div>
     </section>}
   </main>;
