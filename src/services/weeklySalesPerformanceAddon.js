@@ -2,7 +2,7 @@ import { Q1_Q3_REPORT_DESIGNATION_RULES } from './q1Q3ReportsService.js';
 
 export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
   { key: 'ssp', label: 'TOTAL NO. OF SSP (SENIOR SALES PERSON)', plan: 55, actualSource: 'Unique Manager + Territory employees with Joint Working = YES' },
-  { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Unique Manager + Territory employee/date pairs · Joint Working = YES, SECONDARY WITH BDO +SECONDARY WITH CP + SECONDARY WITH SENIOR = PLAN' },
+  { key: 'jointDays', label: 'TOTAL DAYS OF JOINT WORKING', plan: 165, actualSource: 'Secondary Joint Working = YES · BDO + CP + Senior day counts = actual vs plan' },
   { key: 'retailersVisited', label: 'NO. OF RETAILERS VISITED', plan: 990, actualSource: 'Q.2 · Manager + Territory Joint Working KPI' },
   { key: 'orders', label: 'NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', plan: 495, actualSource: 'Unique retailer Type ID · Joint Working YES + Secondary sales type + positive order evidence' },
   { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Check-In · Joint Working YES + Secondary sales type · Basic Order Value' },
@@ -46,6 +46,9 @@ const parseAmount = (value) => {
 };
 const roundUpToWhole = (value) => value === 0 ? 0 : Math.ceil(value - Number.EPSILON * Math.max(1, Math.abs(value)));
 const allowedSenior = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.managerTsoTsiTsm.map(normalize));
+const allowedBdoPartners = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.executiveBdo.map(normalize));
+const allowedSeniorPartners = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.seniorQ3.map(normalize));
+const hasApprovedDesignation = (value, approved) => normalize(value).split(',').some((token) => approved.has(token.trim()));
 
 export function getWeeklySalesPerformanceBucket(dateKey, selectedMonth) {
   const match = String(dateKey ?? '').match(/^(\d{4}-\d{2})-(\d{2})$/);
@@ -65,7 +68,7 @@ function newWeekSets() {
 
 export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
   const ssp = newWeekSets();
-  const jointDays = newWeekSets();
+  const secondaryJointDays = Object.fromEntries(['bdo', 'cp', 'senior'].map((key) => [key, newWeekSets()]));
   const orderRetailersByWeek = newWeekSets();
   const basicAmountByWeek = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
   for (const row of prepared.rowsByMonth?.get(month) || []) {
@@ -74,8 +77,13 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     const identity = row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
     if (identity) {
       ssp[bucket].add(identity);
-      jointDays[bucket].add(`${identity}|${row.dateKey}`);
     }
+    if (!identity || !isSecondarySalesType(row.designationSalesType)) continue;
+    const employeeDay = `${identity}|${row.dateKey}`;
+    const jointPartner = row.jointWorkingDesignation;
+    if (hasApprovedDesignation(jointPartner, allowedBdoPartners)) secondaryJointDays.bdo[bucket].add(employeeDay);
+    if (normalize(row.type) === 'CHANNEL PARTNER') secondaryJointDays.cp[bucket].add(employeeDay);
+    if (allowedSeniorPartners.has(normalize(row.designation))) secondaryJointDays.senior[bucket].add(employeeDay);
   }
   for (const row of prepared.rowsByMonth?.get(month) || []) {
     if (row.jointWorking !== 'YES' || !isSecondarySalesType(row.designationSalesType)) continue;
@@ -94,7 +102,8 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const orderAmount = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, roundUpToWhole(basicAmountByWeek[key])]));
   const actualByRow = {
     ssp: Object.fromEntries(Object.keys(ssp).map((key) => [key, ssp[key].size])),
-    jointDays: Object.fromEntries(Object.keys(jointDays).map((key) => [key, jointDays[key].size])),
+    jointDays: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key,
+      ['bdo', 'cp', 'senior'].reduce((sum, category) => sum + secondaryJointDays[category][key].size, 0)])),
     retailersVisited: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, managerKpiResult?.values?.q2?.[key] ?? (prepared.rowsByMonth?.has(month) ? 0 : null)])),
     orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderRetailersByWeek[key].size : null])),
     orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, prepared.rowsByMonth?.has(month) ? orderAmount[key] : null])),
@@ -102,7 +111,10 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     retainedRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
     newRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
   };
+  const jointDaysBreakdown = Object.fromEntries(['bdo', 'cp', 'senior'].map((category) => [category,
+    Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, secondaryJointDays[category][key].size]))]));
   return { month, weeks: WEEKLY_SALES_PERFORMANCE_WEEKS, rows: WEEKLY_SALES_PERFORMANCE_ROWS, actualByRow,
+    jointDaysBreakdown,
     statuses: {
       orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'Unique Check-In Type ID · Joint Working YES + Secondary sales type + positive Secondary Order Count (or Basic Order Value when count is absent)'])),
       orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 'Check-In · Joint Working YES + Secondary Basic Order Value'])),
