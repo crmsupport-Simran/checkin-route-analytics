@@ -74,12 +74,13 @@ export function prepareJointWorkingRows(records = []) {
   const months = new Set();
   const rows = [];
   const rowsByMonth = new Map();
-  for (const record of records) {
+  for (const [index, record] of records.entries()) {
     const date = parseDate(record.date) || parseDate(record.dateKey);
     if (!date) continue;
     const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     months.add(month);
     const preparedRow = {
+      sourceRow: Number.isInteger(record.sourceIndex) ? record.sourceIndex + 2 : index + 2,
       month,
       day: date.getDate(),
       dateKey: `${month}-${String(date.getDate()).padStart(2, '0')}`,
@@ -237,6 +238,7 @@ export function calculateJointWorkingKpis(prepared, month, { includeTerritory = 
         for (const bucket of matchingBuckets) {
           q2[bucket.key] += 1;
           q2SourceRowsByBucket[bucket.key].push({
+            sourceRow: row.sourceRow,
             date: row.dateKey,
             employee: row.salesUserName,
             empId: row.empId,

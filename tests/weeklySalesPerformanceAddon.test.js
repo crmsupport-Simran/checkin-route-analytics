@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../src/services/jointWorkingKpi.js';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../src/services/q1Q3ReportsService.js';
-import { buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
+import { buildWeeklySalesActualAudit, buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
 
 const row = (date, extra = {}) => ({
   date, salesUserName: 'Senior A', empId: '100', designation: 'MANAGER-SALES',
@@ -79,6 +79,42 @@ test('Q4 counts unique retailer Type IDs with positive secondary order evidence;
   assert.equal(exportRows[6][4], 1276, 'Average Order Value is calculated from Q5 / unique retailer IDs and rounded up');
   assert.equal(exportRows[7][2], 12);
   assert.equal(exportRows[8][4], 7);
+});
+
+test('all weekly KPI actuals export source rows with contributions that reconcile to the displayed values', () => {
+  const records = [
+    row('01/10/2026', { sourceIndex: 0, typeId: 'R-1', designationSalesType: 'SECONDARY', secondaryOrderCount: 2, basicOrderValue: 1250.1 }),
+    row('02/10/2026', { sourceIndex: 1, typeId: 'r-1', designationSalesType: 'SECONDARY', basicOrderValue: 100.2 }),
+    row('08/10/2026', { sourceIndex: 2, typeId: 'R-2', designationSalesType: 'SECONDARY', secondaryOrderCount: '3', basicOrderValue: '2,400.5' }),
+    row('09/10/2026', { sourceIndex: 3, typeId: 'R-4', designationSalesType: 'SECONDARY', secondaryOrderCount: 99, basicOrderValue: 9999, jointWorking: 'NO' }),
+    row('10/10/2026', { sourceIndex: 4, typeId: 'R-5', designationSalesType: 'PRIMARY', secondaryOrderCount: 8, basicOrderValue: 8000 }),
+    row('11/10/2026', { sourceIndex: 5, typeId: 'R-3', designationSalesType: 'SECONDARY ORDER COUNT', secondaryOrderCount: 1, basicOrderValue: 150.1 }),
+    row('12/10/2026', { sourceIndex: 6, typeId: 'R-6', designationSalesType: 'SECONDARY', secondaryOrderCount: 0, basicOrderValue: 0 }),
+    row('12/10/2026', { sourceIndex: 7, empId: '200', salesUserName: 'Territory B', designation: 'TERRITORY SALES OFFICER', typeId: 'R-7', designationSalesType: 'SECONDARY', secondaryOrderCount: 1, basicOrderValue: 200 }),
+  ];
+  const prepared = prepareQ1Q3ReportRows(records);
+  const managerRows = prepareJointWorkingRows(records);
+  const managerKpi = calculateJointWorkingKpis(managerRows, '2026-10', { includeTerritory: true });
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', calculateQ1Q3Reports(prepared, '2026-10'), null, managerKpi);
+  const audit = buildWeeklySalesActualAudit(prepared, '2026-10', addon, managerKpi, { retainedRetailers: { week1: '4' } });
+  const rowsFor = (kpi, week) => audit.filter((item) => item.KPI === kpi && item.Week.startsWith(week));
+  const sum = (items, field) => items.reduce((total, item) => total + (Number(item[field]) || 0), 0);
+  for (const week of ['WEEK-1', 'WEEK-2', 'WEEK-3', 'WEEK-4']) {
+    assert.equal(sum(rowsFor('TOTAL NO. OF SSP (SENIOR SALES PERSON)', week), 'Employee Contribution'), addon.actualByRow.ssp[`week${week.at(-1)}`]);
+    assert.equal(sum(rowsFor('TOTAL DAYS OF JOINT WORKING', week), 'Employee-Date Contribution'), addon.actualByRow.jointDays[`week${week.at(-1)}`]);
+    assert.equal(sum(rowsFor('NO. OF RETAILERS VISITED', week), 'Retailer Visit Contribution'), addon.actualByRow.retailersVisited[`week${week.at(-1)}`]);
+    assert.equal(sum(rowsFor('NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', week), 'Unique Order Retailer Contribution'), addon.actualByRow.orders[`week${week.at(-1)}`]);
+    const amount = rowsFor('TOTAL ORDER AMOUNT', week);
+    assert.equal(Math.ceil(sum(amount, 'Order Amount Contribution')), addon.actualByRow.orderAmount[`week${week.at(-1)}`]);
+    const average = rowsFor('AVERAGE ORDER VALUE', week);
+    const amountValue = sum(average, 'Order Amount Contribution');
+    const retailerCount = sum(average, 'Unique Order Retailer Contribution');
+    assert.equal(retailerCount, addon.actualByRow.orders[`week${week.at(-1)}`]);
+    if (retailerCount) assert.equal(Math.ceil(amountValue / retailerCount), addon.actualByRow.averageOrderValue[`week${week.at(-1)}`]);
+  }
+  assert.equal(rowsFor('OLD RETAILER RETAINED', 'WEEK-1')[0]['Reported Weekly Actual'], 4);
+  assert.ok(rowsFor('NEW RETAILER ADDED', 'WEEK-1')[0]['Source Rule'].includes('Manual weekly actual'));
+  assert.ok(audit.some((item) => item.KPI === 'NO. OF RETAILERS VISITED' && item['Source Row'] === 2));
 });
 
 test('plan edits validate nonnegative numeric targets and load month-specific saved plans', () => {

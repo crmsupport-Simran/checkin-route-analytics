@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','1.9 · 24 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','2.1 · 31 October 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -109,6 +109,7 @@ bullets([
 'CHECKIN-OUT REPORT reuses the same Check-In upload. Its order count and sale remain pending until the separate Secondary Orders source is inspected and connected.',
 'Choose the dashboard tab and reporting month. Confirm the source file name and month before interpreting or exporting values.',
 'Use Calculation Details or source audit tables to inspect source rows, eligibility, duplicates, missing identifiers, and exclusion reasons when a KPI does not reconcile.',
+'In Weekly Sales Performance, use the individual question report list below the table to download a separate CSV or Excel report for each KPI, with all four weekly actuals and, for calculated KPIs, the Check-In rows and contribution values behind those actuals. The Actuals Detail CSV and Actuals Detail Excel buttons also download all KPIs together.',
 'Export the report after confirming its scope. CSV/Excel exports follow the report calculations; they do not change them.'
 ])
 doc.add_heading('3. Welcome screen and tab behavior',level=1)
@@ -173,6 +174,7 @@ table(['KPI row','Plan / actual source and calculation'],[
 ('Old Retailer Retained','Weekly plan is editable per month; actual is typed manually and saved by month in this browser. Blank actual displays Pending.'),
 ('New Retailer Added','Weekly plan is editable per month; actual is typed manually and saved by month in this browser. Blank actual displays Pending.')],[2.4,5.05])
 para('Weekly order count and amount are calculated from the Check-In report only, using Joint Working and Secondary sales fields. The dashboard no longer includes a separate Secondary Sales workbook uploader; Basic Order Value and secondary order evidence in the Check-In source continue to drive these actuals.')
+para('Individual Question Actual Reports below the weekly table provide a separate CSV and Excel download for each of the eight KPIs. Each report includes the selected month’s four weekly actuals; calculated KPIs also include their qualifying Check-In source rows with contribution columns and rule. Manual retailer reports identify the entered values and explain that no Check-In source rows exist. The Actuals Detail CSV and Actuals Detail Excel buttons remain available for combined exports across every KPI. In the combined Excel workbook there is an Actual Summary plus separate detail tabs; the combined CSV starts with a weekly actual summary for every KPI/week, followed by combined source detail rows. The detail includes Check-In source row, date, employee identity/designation, Joint Working fields, Type/Type ID, secondary order fields, reported weekly actual, per-row contribution, and the KPI rule. Contribution fields can be summed by KPI and week to reconcile the displayed actual; distinct-count KPIs give duplicate rows a zero contribution. Manual retailer counts are labelled as user-entered values and do not have Check-In source rows. The W1 joint-working actual of 106 is reconciled by summing Employee-Date Contribution for Week 1.')
 para('Known October 2026 reconciliation figures previously confirmed by the user for Total Order Amount are W1 ₹14,85,542; W2 ₹15,42,515; W3 ₹15,29,642. These are a cross-check against the relevant source workbook, not hardcoded outputs. W4 depends on records in the selected month after the 23rd.')
 
 doc.add_heading('10. Dashboard',level=1)
@@ -257,6 +259,7 @@ para('The list is the combined set in A1 and A3. Q1 accepts any approved Executi
 doc.add_heading('A5. Q1–Q3 report Q3 Senior list',level=2)
 para('DEPUTY MANAGER-SALES; DEPUTY MANAGER-SALES (4); MANAGER-SALES; MANAGER-SALES (4); ASSISTANT MANAGER-SALES; ASSISTANT MANAGER-SALES (4); ASSISTANT MANAGER-SALES (NBD) (4); AGM-SALES; SR.MANAGER-SALES (9); DGM-SALES. Reports specifying Zonal Manager exclusions also omit SHOBHIT GOEL; OTHERS; ARCHIT GARG; SHANTANU ATTARY.')
 
+doc.add_page_break()
 doc.add_heading('Appendix B. Formula summary',level=1)
 table(['Output','Formula / unit of count'],[
 ('Original KPI Q1','Sum by Manager of count(distinct date) for eligible rows within each week.'),
@@ -266,9 +269,11 @@ table(['Output','Formula / unit of count'],[
 ('Dedicated Q2 report','Count(distinct normalized distributor identifier) per week globally across eligible Managers, Type CHANNEL PARTNER.'),
 ('Weekly SSP','Count(distinct eligible employee identity) per week where Joint Working = YES.'),
 ('Weekly joint-working days','Count(distinct eligible employee identity + date) per week where Joint Working = YES.'),
+('Weekly retailers visited','The same qualifying source rows and count from the Manager + Territory Q.2 result.'),
 ('Weekly orders','Count(distinct Type ID) per week among secondary-sales Joint Working rows with positive order evidence.'),
 ('Weekly amount / AOV','Amount = sum Basic Order Value for qualifying Check-In rows, rounded up. AOV = amount ÷ unique order retailers, rounded up.'),
-('Retailer manual actuals','Entered by a user per week; blank is Pending. Not computed from Check-In.'),
+('Weekly actual audit contributions','SSP and employee-days contribute 1 for the first distinct identity/key and 0 for duplicate rows; retailer visits contribute 1 per Q.2 row; order count contributes 1 for the first qualifying Type ID per week; amount contributes Basic Order Value per qualifying row. AOV exports both amount and unique retailer contributions.'),
+('Retailer manual actuals','Entered by a user per week; blank is Pending. Exports have no Check-In source row.'),
 ('Check-In/Check-Out employee-day','Group by Emp ID + parsed date. Rows without an Emp ID remain separate rather than being deduplicated by BDO name + date; unique BDO display may still use normalized names.'),
 ('Counter / CP visits','Distinct Type ID by employee-day: DEALER + OTHER/OTHERS for counters; CHANNEL PARTNER + DIRECT DEALER for CP visits.'),
 ('Check-In/Check-Out working time','Earliest valid Check In to latest valid Check Out; daily spans over 18 hours and negative spans are excluded from valid total and flagged.')],[1.7,5.75])

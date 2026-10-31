@@ -106,6 +106,128 @@ export function buildWeeklyJointDaysAudit(prepared, month, addon) {
   return rawRows.sort((a, b) => a.weekKey.localeCompare(b.weekKey) || a.dateKey.localeCompare(b.dateKey) || a.employee.localeCompare(b.employee) || a.sourceRow - b.sourceRow);
 }
 
+export const WEEKLY_ACTUAL_AUDIT_COLUMNS = Object.freeze([
+  'Record Type', 'KPI', 'Week', 'Reported Weekly Actual', 'Source Row', 'Date', 'Sales User', 'Employee ID', 'Sales User Designation',
+  'Joint Working', 'Joint Working Name', 'Joint Working Designation', 'Type', 'Type ID', 'Designation Sales Type',
+  'Secondary Order Count', 'Basic Order Value', 'Employee Contribution', 'Employee-Date Contribution',
+  'Retailer Visit Contribution', 'Unique Order Retailer Contribution', 'Order Amount Contribution', 'Source Rule',
+]);
+
+const weeklyAuditRow = (kpi, weekKey, actual, row, measures, rule) => ({
+  'Record Type': row ? 'SOURCE DETAIL' : 'MANUAL ACTUAL',
+  KPI: kpi,
+  Week: WEEKLY_SALES_PERFORMANCE_WEEKS.find(({ key }) => key === weekKey)?.label || weekKey,
+  'Reported Weekly Actual': actual ?? '',
+  'Source Row': row?.sourceRow ?? '',
+  Date: row?.dateLabel || row?.dateKey || '',
+  'Sales User': row?.salesUserName || '',
+  'Employee ID': row?.empId || '',
+  'Sales User Designation': row?.designationLabel || row?.designation || '',
+  'Joint Working': row?.jointWorkingLabel || row?.jointWorking || '',
+  'Joint Working Name': row?.seniorLabel || row?.seniorName || '',
+  'Joint Working Designation': row?.jointWorkingDesignationLabel || row?.jointWorkingDesignation || '',
+  Type: row?.typeLabel || row?.type || '',
+  'Type ID': row?.typeId || '',
+  'Designation Sales Type': row?.designationSalesTypeLabel || row?.designationSalesType || '',
+  'Secondary Order Count': row?.secondaryOrderCount ?? '',
+  'Basic Order Value': row?.basicOrderValue ?? '',
+  'Employee Contribution': measures.employee ?? '',
+  'Employee-Date Contribution': measures.employeeDate ?? '',
+  'Retailer Visit Contribution': measures.retailerVisit ?? '',
+  'Unique Order Retailer Contribution': measures.orderRetailer ?? '',
+  'Order Amount Contribution': measures.orderAmount ?? '',
+  'Source Rule': rule,
+});
+
+/** Raw Check-In rows and row-level contributions for every calculated weekly actual. */
+export function buildWeeklySalesActualAudit(prepared, month, addon, managerKpiResult, manualActuals = {}) {
+  if (!addon) return [];
+  const sourceRows = prepared.rowsByMonth?.get(month) || [];
+  const rows = [];
+  const identityOf = (row) => row.empId ? `ID:${normalize(row.empId)}` : (row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '');
+  const seenEmployee = new Set();
+  const seenEmployeeDate = new Set();
+  const eligibleSsp = new Set(Q1_Q3_REPORT_DESIGNATION_RULES.managerTsoTsiTsm.map(normalize));
+
+  for (const row of sourceRows) {
+    const week = getWeeklySalesPerformanceBucket(row.dateKey, month);
+    const identity = identityOf(row);
+    if (!week || row.jointWorking !== 'YES' || !eligibleSsp.has(normalize(row.designation)) || !identity) continue;
+    const employeeKey = `${week}|${identity}`;
+    const pairKey = `${employeeKey}|${row.dateKey}`;
+    rows.push(weeklyAuditRow('TOTAL NO. OF SSP (SENIOR SALES PERSON)', week, addon.actualByRow.ssp[week], row, {
+      employee: seenEmployee.has(employeeKey) ? 0 : 1,
+    }, 'Unique eligible Manager + Territory employee identity with Joint Working = YES, counted once per week.'));
+    seenEmployee.add(employeeKey);
+    rows.push(weeklyAuditRow('TOTAL DAYS OF JOINT WORKING', week, addon.actualByRow.jointDays[week], row, {
+      employeeDate: seenEmployeeDate.has(pairKey) ? 0 : 1,
+    }, 'Unique eligible Manager + Territory employee identity/date pair with Joint Working = YES.'));
+    seenEmployeeDate.add(pairKey);
+  }
+
+  const q2Rows = managerKpiResult?.details?.q2SourceRowsByBucket || {};
+  const sourceByRow = new Map(sourceRows.map((row) => [row.sourceRow, row]));
+  for (const week of addon.weeks) {
+    for (const source of q2Rows[week.key] || []) {
+      const sourceRow = sourceByRow.get(source.sourceRow);
+      rows.push(weeklyAuditRow('NO. OF RETAILERS VISITED', week.key, addon.actualByRow.retailersVisited[week.key], sourceRow || source, {
+        retailerVisit: 1,
+      }, 'Every source row included by Q.2 · Manager + Territory Joint Working KPI.'));
+    }
+  }
+
+  const seenRetailer = new Set();
+  const seenAverageRetailer = new Set();
+  const secondaryRowsByWeek = Object.fromEntries(addon.weeks.map(({ key }) => [key, []]));
+  for (const row of sourceRows) {
+    const week = getWeeklySalesPerformanceBucket(row.dateKey, month);
+    if (!week || row.jointWorking !== 'YES' || !isSecondarySalesType(row.designationSalesType)) continue;
+    secondaryRowsByWeek[week].push(row);
+    const explicitOrderCount = parseAmount(row.secondaryOrderCount);
+    const hasOrderEvidence = explicitOrderCount === null
+      ? (parseAmount(row.basicOrderValue) ?? 0) > 0
+      : explicitOrderCount > 0;
+    const retailerId = normalize(row.typeId);
+    const orderRetailerKey = `${week}|${retailerId}`;
+    if (!hasOrderEvidence || !retailerId) continue;
+    rows.push(weeklyAuditRow('NO. OF ORDERS RECEIVED FROM THE RETAILER VISITED', week, addon.actualByRow.orders[week], row, {
+      orderRetailer: seenRetailer.has(orderRetailerKey) ? 0 : 1,
+    }, 'Distinct nonblank Type ID for Joint Working = YES + Secondary sales type + positive Secondary Order Count; if that field is absent, positive Basic Order Value.'));
+    seenRetailer.add(orderRetailerKey);
+  }
+
+  for (const week of addon.weeks) {
+    const orderCount = addon.actualByRow.orders[week.key];
+    for (const row of secondaryRowsByWeek[week.key]) {
+      const typeId = normalize(row.typeId);
+      const explicitOrderCount = parseAmount(row.secondaryOrderCount);
+      const hasOrderEvidence = explicitOrderCount === null
+        ? (parseAmount(row.basicOrderValue) ?? 0) > 0
+        : explicitOrderCount > 0;
+      const amount = parseAmount(row.basicOrderValue) ?? 0;
+      const hasOrderRetailer = hasOrderEvidence && Boolean(typeId);
+      rows.push(weeklyAuditRow('TOTAL ORDER AMOUNT', week.key, addon.actualByRow.orderAmount[week.key], row, {
+        orderAmount: amount,
+      }, 'Basic Order Value from each Joint Working = YES + Secondary sales type Check-In row; displayed weekly amount is rounded upward to whole rupees.'));
+      rows.push(weeklyAuditRow('AVERAGE ORDER VALUE', week.key, addon.actualByRow.averageOrderValue[week.key], row, {
+        orderRetailer: hasOrderRetailer && !seenAverageRetailer.has(`${week.key}|${typeId}`) ? 1 : 0,
+        orderAmount: amount,
+      }, `Calculated as weekly Total Order Amount ÷ ${orderCount ?? 0} distinct order Type IDs; sum Order Amount Contribution and divide by the unique retailer contributions, then round upward.`));
+      if (hasOrderRetailer) seenAverageRetailer.add(`${week.key}|${typeId}`);
+    }
+  }
+
+  for (const row of addon.rows.filter(({ key }) => ['retainedRetailers', 'newRetailers'].includes(key))) {
+    for (const week of addon.weeks) {
+      const value = manualActuals[row.key]?.[week.key];
+      const manualValue = value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
+      rows.push(weeklyAuditRow(row.label, week.key, manualValue, null, {},
+        'Manual weekly actual entered by the user and saved in this browser; there are no Check-In source rows for this value.'));
+    }
+  }
+  return rows.sort((a, b) => String(a.Week).localeCompare(String(b.Week)) || String(a.KPI).localeCompare(String(b.KPI)) || (Number(a['Source Row']) || 0) - (Number(b['Source Row']) || 0));
+}
+
 export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
   const ssp = newWeekSets();
   const jointDays = newWeekSets();
