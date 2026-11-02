@@ -18,6 +18,7 @@ import {
   WEEKLY_SALES_PLAN_STORAGE_KEY,
 } from '../services/weeklySalesPerformanceAddon';
 import { csvValue } from '../utils/formatUtils';
+import { parseSupplemental } from '../services/supplementalLoader';
 
 const monthLabel = (key) => {
   if (!key) return '';
@@ -41,6 +42,11 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const [planOverrides, setPlanOverrides] = useState(() => readWeeklySalesPlanOverrides());
   const [editingPlans, setEditingPlans] = useState(false);
   const [planDraft, setPlanDraft] = useState({});
+  const [secondaryOrders, setSecondaryOrders] = useState(null);
+  const [secondaryOrderFileName, setSecondaryOrderFileName] = useState('');
+  const [secondaryOrderLoading, setSecondaryOrderLoading] = useState(false);
+  const [secondaryOrderProgress, setSecondaryOrderProgress] = useState('');
+  const [secondaryOrderError, setSecondaryOrderError] = useState('');
   useEffect(() => setMonthOverride(''), [report]);
   useEffect(() => {
     try { localStorage.setItem(WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, JSON.stringify(manualActuals)); } catch { /* Browser storage can be disabled. */ }
@@ -52,7 +58,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const hasMonthData = Boolean(prepared.rowsByMonth?.has(month));
   const existingResult = useMemo(() => report && month ? calculateQ1Q3Reports(prepared, month) : null, [report, prepared, month]);
   const territoryKpiResult = useMemo(() => report && month ? calculateJointWorkingKpis(managerKpiPrepared, month, { includeTerritory: true }) : null, [report, managerKpiPrepared, month]);
-  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, null, territoryKpiResult) : null, [prepared, month, existingResult, territoryKpiResult]);
+  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders, territoryKpiResult) : null, [prepared, month, existingResult, secondaryOrders, territoryKpiResult]);
   const monthManualActuals = manualActuals[month] || {};
   const monthPlans = planOverrides[month] || {};
   const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans), [addon, monthManualActuals, monthPlans]);
@@ -69,13 +75,30 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     setPlanOverrides((current) => saveWeeklySalesPlanOverrides(current, month, saved));
     setEditingPlans(false);
   };
+  const uploadSecondaryOrderReport = async (file) => {
+    if (!file) return;
+    setSecondaryOrderLoading(true);
+    setSecondaryOrderProgress('Reading secondary order report…');
+    setSecondaryOrderError('');
+    try {
+      const parsed = await parseSupplemental(file, 'secondary-orders', (progress) => setSecondaryOrderProgress(progress.stage || 'Reading secondary order report…'));
+      setSecondaryOrders(parsed);
+      setSecondaryOrderFileName(file.name);
+    } catch (error) {
+      setSecondaryOrders(null);
+      setSecondaryOrderFileName('');
+      setSecondaryOrderError(error.message || 'Could not read this secondary order report.');
+    } finally {
+      setSecondaryOrderLoading(false);
+      setSecondaryOrderProgress('');
+    }
+  };
   const getActual = (row, week) => {
     if (['retainedRetailers', 'newRetailers'].includes(row.key)) return monthManualActuals[row.key]?.[week.key] ?? 'PENDING';
     if (!report && ['ssp', 'jointDays', 'retailersVisited', 'orders', 'orderAmount', 'averageOrderValue'].includes(row.key)) return 'UPLOAD CHECK-IN REPORT';
     if (!hasMonthData) return 'PENDING';
     const value = addon.actualByRow[row.key]?.[week.key];
     if (value !== null && value !== undefined) return Number(value).toLocaleString('en-IN');
-    if (row.key === 'averageOrderValue') return 'PENDING';
     return addon.statuses[row.key]?.[week.key] || 'SOURCE DATA REQUIRED';
   };
   const updateManual = (key, weekKey, value) => setManualActuals((current) => ({
@@ -103,8 +126,8 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const summaryRows = [
       ['WEEKLY JOINT WORKING ACTUAL SOURCE AUDIT'],
       ['Month', monthLabel(month)],
-      ['Calculation', 'Distinct Manager + Territory employee identity/date pairs with Joint Working = YES. Secondary partner and Type filters are not applied to this actual.'],
-      ['Reconciliation', 'Filter Raw Source Rows by Week and sum Unique Employee-Date Pair Contribution; the total equals Week Actual. Duplicate Check-In rows for a pair are listed with contribution 0.'],
+      ['Calculation', 'Distinct Manager + Territory employee identity/date pairs with at least one qualifying Manager + Territory Q.2 Check-In.'],
+      ['Reconciliation', 'Filter Raw Source Rows by Week and sum Unique Employee-Date Pair Contribution; the total equals Week Actual. Repeated qualifying Check-Ins for a pair contribute 0 after the first.'],
       [],
       ['Week', 'Actual Unique Employee-Date Pairs', 'Raw Qualifying Check-In Rows'],
       ...addon.weeks.map((week) => [week.label, addon.actualByRow.jointDays[week.key] ?? 0, jointDaysAuditRows.filter((row) => row.weekKey === week.key).length]),
@@ -136,7 +159,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const summary = [
       ['WEEKLY SALES PERFORMANCE · ACTUALS DETAIL'],
       ['Month', monthLabel(month)],
-      ['Source', 'Currently loaded Check-In report and browser-saved manual actuals. No plan values are included.'],
+      ['Source', 'Currently loaded Check-In report, uploaded Secondary Order Report, and browser-saved manual actuals. No plan values are included.'],
       [],
       ['KPI', ...addon.weeks.map((week) => week.label)],
       ...addon.rows.map((row) => [row.label, ...addon.weeks.map((week) => {
@@ -144,10 +167,10 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
           const value = monthManualActuals[row.key]?.[week.key];
           return value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
         }
-        return addon.actualByRow[row.key]?.[week.key] ?? 'PENDING';
+        return addon.actualByRow[row.key]?.[week.key] ?? addon.statuses[row.key]?.[week.key] ?? 'PENDING';
       })]),
       [],
-      ['Detail contribution guide', 'Sum the relevant contribution column by KPI and week to reconcile the reported actual. SSP and joint-working days use distinct-contribution columns; retailer visit rows contribute 1 each; order amount rows contribute Basic Order Value; AOV includes both amount and distinct retailer contributions.'],
+      ['Detail contribution guide', 'Sum the relevant contribution column by KPI and week to reconcile the reported actual. SSP and joint-working days use distinct-contribution columns; retailer visit rows contribute 1 each; order count rows contribute one per unique matched Order ID; order amount rows contribute Basic Order Value from the Secondary Order Report; AOV uses the same matched orders.'],
     ];
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(summary), 'Actual Summary');
     const addDetailSheet = (name, kpi) => {
@@ -157,7 +180,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
         ...detail.map((row) => WEEKLY_ACTUAL_AUDIT_COLUMNS.map((column) => row[column])),
       ]);
       if (detail.length) sheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(WEEKLY_ACTUAL_AUDIT_COLUMNS.length - 1)}${detail.length + 1}` };
-      sheet['!cols'] = [18, 40, 20, 20, 12, 14, 26, 16, 32, 16, 28, 34, 20, 20, 24, 20, 18, 14, 18, 18, 22, 20, 76].map((wch) => ({ wch }));
+      sheet['!cols'] = [18, 40, 20, 20, 12, 14, 26, 16, 32, 16, 28, 34, 20, 20, 24, 20, 18, 14, 18, 18, 22, 20, 15, 15, 20, 16, 18, 76].map((wch) => ({ wch }));
       XLSX.utils.book_append_sheet(workbook, sheet, name);
     };
     addDetailSheet('SSP Source', 'TOTAL NO. OF SSP (SENIOR SALES PERSON)');
@@ -175,14 +198,14 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
       const value = monthManualActuals[row.key]?.[week.key];
       return value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
     }
-    return addon.actualByRow[row.key]?.[week.key] ?? 'PENDING';
+    return addon.actualByRow[row.key]?.[week.key] ?? addon.statuses[row.key]?.[week.key] ?? 'PENDING';
   };
   const safeKpiFileName = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const exportKpiActualCsv = (kpi) => {
     const detail = weeklyActualAuditRows.filter((row) => row.KPI === kpi.label);
     const summaryRows = [
       ['WEEKLY KPI ACTUAL REPORT'], ['Month', monthLabel(month)], ['KPI', kpi.label],
-      ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : 'Currently loaded Check-In report.'],
+      ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
       [], WEEKLY_ACTUAL_AUDIT_COLUMNS,
@@ -195,7 +218,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const workbook = XLSX.utils.book_new();
     const summary = [
       ['WEEKLY KPI ACTUAL REPORT'], ['Month', monthLabel(month)], ['KPI', kpi.label],
-      ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : 'Currently loaded Check-In report.'],
+      ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
       [], ['Source Rule', detail[0]?.['Source Rule'] || 'Manual actual; no Check-In source rows.'],
@@ -213,13 +236,19 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   };
 
   return <main className="weekly-sales-dashboard">
-    <section className="joint-kpi-heading"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>WEEKLY SALES PERFORMANCE</h2><p>Plan vs actual · Q.4/Q.5 use Check-In Secondary data and Average Order Value is calculated.</p></div>
+    <section className="joint-kpi-heading"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>WEEKLY SALES PERFORMANCE</h2><p>Plan vs actual · Q.4/Q.5 use the uploaded Secondary Order Report matched to same-day Check-Ins; Average Order Value is calculated.</p></div>
       <div className="joint-kpi-controls"><div><label htmlFor="weekly-sales-month">Month</label><select id="weekly-sales-month" value={month} onChange={(event) => setMonthOverride(event.target.value)} disabled={editingPlans}>{monthOptions.map((key) => <option key={key} value={key}>{monthLabel(key)}</option>)}</select></div><button className="secondary" disabled={!addon || editingPlans} onClick={() => downloadCsv(exportRows, `weekly-sales-performance-${month}.csv`)}>Export CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWorkbook}>Export Excel</button></div>
     </section>
     {!month && <section className="card q3-empty"><h3>Select a month</h3><p>Upload a Check-In report to populate actuals.</p></section>}
     {addon && <section className="card q3-bucket-card weekly-sales-addon">
-      <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? `Editing ${monthLabel(month)}; saving changes only this month’s plan.` : `Plans are saved separately for each month in this browser. ${hasMonthData ? 'Actuals use this month’s Check-In data.' : 'No Check-In rows for this month yet; actuals remain pending.'} Old/new retailer actuals are manual.`}</small></div></div>
+      <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? `Editing ${monthLabel(month)}; saving changes only this month’s plan.` : `Plans are saved separately for each month in this browser. ${hasMonthData ? 'Actuals use this month’s Check-In data.' : 'No Check-In rows for this month yet; actuals remain pending.'} Q.4 and Q.5 use the uploaded Secondary Order Report. Old/new retailer actuals are manual.`}</small></div></div>
       <p className="q3-scope-note">Weekly buckets: 1–7, 8–15, 16–23, and 24–month end. Existing Q1–Q3 and Manager-only KPI rules are not changed.</p>
+      <section className="card weekly-order-upload" aria-label="Secondary Order Report upload">
+        <div><span className="eyebrow">SECONDARY ORDER SOURCE</span><h3>Upload Secondary Order Report</h3><p>Q.4 and Q.5 use same-day Visit Orders with status Approved or Pending, matched to the Check-In employee and date. Counts use unique Order IDs; sales use Basic Order Value.</p></div>
+        <label className={`weekly-order-upload-button${secondaryOrderLoading ? ' is-loading' : ''}`}>{secondaryOrderLoading ? (secondaryOrderProgress || 'Reading…') : secondaryOrders ? 'Replace secondary report' : 'Choose secondary report'}<input aria-label="Upload Secondary Order Report" type="file" accept=".xlsx,.xls,.csv" disabled={secondaryOrderLoading} onChange={(event) => { uploadSecondaryOrderReport(event.target.files?.[0]); event.target.value = ''; }}/></label>
+        {secondaryOrderFileName && <div className="weekly-order-file"><b>{secondaryOrderFileName}</b><span>{secondaryOrders?.stats?.rows?.toLocaleString()} rows · {addon.weeks.reduce((sum, week) => sum + (addon.matchedSecondaryOrdersByWeek[week.key]?.length || 0), 0).toLocaleString()} qualifying matched Visit Orders for {monthLabel(month)}</span></div>}
+        {secondaryOrderError && <p className="weekly-order-error" role="alert">{secondaryOrderError}</p>}
+      </section>
       <div className="table-scroll"><table className="q3-bucket-table weekly-sales-table"><thead><tr><th rowSpan="2">KPI</th>{addon.weeks.map((week) => <th key={week.key} colSpan="2">{week.label}</th>)}</tr><tr>{addon.weeks.flatMap((week) => [<th key={`${week.key}-plan`}>PLAN</th>, <th key={`${week.key}-actual`}>ACTUAL</th>])}</tr></thead>
         <tbody>{addon.rows.map((row) => <tr key={row.key}><th><span>{row.label}</span><small>{row.actualSource}</small></th>{addon.weeks.flatMap((week) => {
           const isManual = row.key === 'retainedRetailers' || row.key === 'newRetailers';
@@ -227,7 +256,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
           const planValue = editingPlans ? (planDraft[row.key]?.[week.key] ?? row.plan) : Number(monthPlans[row.key]?.[week.key] ?? row.plan);
           return [<td className="weekly-plan" key={`${week.key}-plan`}>{editingPlans ? <input aria-label={`${row.label} ${week.label} plan`} type="number" min="0" step="any" value={planValue} className={isValidPlanValue(planValue) ? '' : 'invalid'} onChange={(event) => setPlanDraft((current) => ({ ...current, [row.key]: { ...(current[row.key] || {}), [week.key]: event.target.value } }))}/> : Number(planValue).toLocaleString('en-IN')}</td>, <td key={`${week.key}-actual`} className="weekly-actual">{isManual ? <input aria-label={`${row.label} ${week.label} actual`} type="number" min="0" step="any" value={monthManualActuals[row.key]?.[week.key] ?? ''} className={isValidManualActual(monthManualActuals[row.key]?.[week.key] ?? '') ? '' : 'invalid'} onChange={(event) => updateManual(row.key, week.key, event.target.value)} placeholder="Pending"/> : typeof actual === 'string' && !/^\d[\d,.]*$/.test(actual) ? <span className="weekly-status">{actual}</span> : actual}</td>];
         })}</tr>)}</tbody></table></div>
-      <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts each eligible Manager + Territory employee/date once when that person has at least one Check-In qualifying under Manager + Territory Q.2: Joint Working = YES, named partner, eligible Sales User designation, at least one approved Executive/BDO Joint Working Designation token, and Type DEALER or OTHER. “No. of Retailers Visited” counts the qualifying Q.2 source Check-In rows; its Detail report shows which rows contribute. Q4 counts unique Check-In Type IDs with Joint Working = YES and Secondary sales type, with a positive Secondary Order Count or, if that field is absent, positive Basic Order Value. Q5 sums Basic Order Value from qualifying Check-In rows; currency actuals and average order value are rounded up to whole rupees. Average Order Value = Q5 ÷ Q4. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
+      <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts each eligible Manager + Territory employee/date once when that person has at least one Check-In qualifying under Manager + Territory Q.2. Q.4 counts unique matching Secondary Order Report Order IDs for Visit Orders with Approved or Pending status, matched to a same-day Check-In by employee ID (name fallback) + date; that Check-In must have Joint Working = YES and Secondary sales type. Q.5 sums Basic Order Value from those same matched orders. Average Order Value = Q.5 ÷ Q.4; currency actuals and average order value are rounded up to whole rupees. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
       <p className="q3-scope-note">The Joint Working Source Audit lists the Q.2 Check-In rows behind this count. Sum “Unique Employee-Date Pair Contribution” to reconcile each weekly actual; repeated qualifying Check-Ins for the same employee and date contribute 0 after the first. A Manager + Territory employee/date is included only if it has at least one qualifying Q.2 retailer Check-In.</p>
       <div className="q3-export-bar"><b>All Weekly Actuals · source rows and contribution columns</b><button className="secondary" disabled={!addon || editingPlans} onClick={exportWeeklyActualsCsv}>Actuals Detail CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWeeklyActualsWorkbook}>Actuals Detail Excel</button></div>
       <section className="weekly-kpi-actual-downloads" aria-label="Individual weekly KPI actual reports">

@@ -38,15 +38,15 @@ test('add-on counts unique Manager + Territory employee-days represented in qual
   const jointDayAudit = buildWeeklyJointDaysAudit(prepared, '2026-10', addon);
   assert.equal(jointDayAudit.filter((source) => source.weekKey === 'week2').reduce((sum, source) => sum + source.uniqueEmployeeDatePairContribution, 0), 2);
   assert.equal(jointDayAudit.filter((source) => source.weekKey === 'week4').reduce((sum, source) => sum + source.uniqueEmployeeDatePairContribution, 0), 1);
-  assert.deepEqual(addon.actualByRow.orders, { week1: 0, week2: 0, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.orderAmount, { week1: 0, week2: 0, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.orders, { week1: null, week2: null, week3: null, week4: null });
+  assert.deepEqual(addon.actualByRow.orderAmount, { week1: null, week2: null, week3: null, week4: null });
   assert.deepEqual(existing.values, existingSnapshot, 'add-on calculation must not mutate existing dashboard KPIs');
   const exported = buildWeeklySalesPerformanceExportRows(addon, { retainedRetailers: { week1: '12' }, newRetailers: { week3: '7' } });
   assert.equal(exported[1][1], 55);
   assert.equal(exported[1][2], 1);
-  assert.equal(exported[4][8], 0);
-  assert.equal(exported[5][2], 0);
-  assert.equal(exported[6][4], 'Pending');
+  assert.equal(exported[4][8], 'UPLOAD SECONDARY ORDER REPORT');
+  assert.equal(exported[5][2], 'UPLOAD SECONDARY ORDER REPORT');
+  assert.equal(exported[6][4], 'UPLOAD SECONDARY ORDER REPORT');
   assert.equal(exported[7][2], 12);
   assert.equal(exported[8][6], 7);
   const plans = { ssp: { week1: 60 }, jointDays: { week3: 180 } };
@@ -55,7 +55,7 @@ test('add-on counts unique Manager + Territory employee-days represented in qual
   assert.equal(exportWithEditedPlans[2][5], 180);
 });
 
-test('Q4 counts unique retailer Type IDs with positive secondary order evidence; currency actuals round up', () => {
+test('Q4 and Q5 use unique same-day approved or pending Visit Orders and Basic Order Value from the order report', () => {
   const records = [
     row('01/10/2026', { sourceIndex: 0, typeId: 'R-1', designationSalesType: 'SECONDARY', secondaryOrderCount: 2, basicOrderValue: 1250.1 }),
     row('02/10/2026', { sourceIndex: 1, typeId: 'r-1', designationSalesType: 'SECONDARY', basicOrderValue: 100.2 }),
@@ -68,18 +68,27 @@ test('Q4 counts unique retailer Type IDs with positive secondary order evidence;
   const prepared = prepareQ1Q3ReportRows(records);
   const q1Q3 = calculateQ1Q3Reports(prepared, '2026-10');
   const territoryKpi = calculateJointWorkingKpis(prepareJointWorkingRows(records), '2026-10', { includeTerritory: true });
-  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3, null, territoryKpi);
+  const secondaryOrders = { records: [
+    { sourceRow: 2, orderId: 'SO-1', dateKey: '2026-10-01', empId: '100', orderType: 'VISIT ORDER', status: 'PENDING', basicAmount: 1250.1 },
+    { sourceRow: 3, orderId: 'SO-1', dateKey: '2026-10-01', empId: '100', orderType: 'VISIT ORDER', status: 'APPROVED', basicAmount: 9999 },
+    { sourceRow: 4, orderId: 'SO-2', dateKey: '2026-10-02', empId: '100', orderType: 'VISIT ORDER', status: 'APPROVED', basicAmount: 100.2 },
+    { sourceRow: 5, orderId: 'SO-3', dateKey: '2026-10-08', empId: '100', orderType: 'VISIT ORDER', status: 'PENDING', basicAmount: 2400.5 },
+    { sourceRow: 6, orderId: 'SO-4', dateKey: '2026-10-11', empId: '100', orderType: 'VISIT ORDER', status: 'APPROVED', basicAmount: 150.1 },
+    { sourceRow: 7, orderId: 'SO-5', dateKey: '2026-10-09', empId: '100', orderType: 'VISIT ORDER', status: 'APPROVED', basicAmount: 9999 },
+  ] };
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', q1Q3, secondaryOrders, territoryKpi);
 
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 2, week2: 4, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.orders, { week1: 1, week2: 2, week3: 0, week4: 0 });
+  assert.deepEqual(addon.actualByRow.orders, { week1: 2, week2: 2, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.orderAmount, { week1: 1351, week2: 2551, week3: 0, week4: 0 });
-  assert.deepEqual(addon.actualByRow.averageOrderValue, { week1: 1351, week2: 1276, week3: null, week4: null });
+  assert.deepEqual(addon.actualByRow.averageOrderValue, { week1: 676, week2: 1276, week3: null, week4: null });
   const exportRows = buildWeeklySalesPerformanceExportRows(addon, { retainedRetailers: { week1: '12' }, newRetailers: { week2: '7' } });
   assert.equal(exportRows[3][2], 2, 'Q2 visit count feeds the table actual');
-  assert.equal(exportRows[4][2], 1, 'Q4 counts the repeated retailer Type ID once');
+  assert.equal(exportRows[4][2], 2, 'Q4 counts the two unique matched Order IDs');
   assert.equal(exportRows[5][2], 1351, 'Q5 exports the rounded-up weekly Basic Order Value');
   assert.equal(exportRows[5][4], 2551, 'Q5 exports the rounded-up weekly Basic Order Value');
-  assert.equal(exportRows[6][4], 1276, 'Average Order Value is calculated from Q5 / unique retailer IDs and rounded up');
+  assert.equal(exportRows[6][2], 676, 'Average Order Value is calculated from Q5 / matched Order IDs and rounded up');
+  assert.equal(exportRows[6][4], 1276, 'Average Order Value is calculated from Q5 / matched Order IDs and rounded up');
   assert.equal(exportRows[7][2], 12);
   assert.equal(exportRows[8][4], 7);
 });
@@ -98,7 +107,14 @@ test('all weekly KPI actuals export source rows with contributions that reconcil
   const prepared = prepareQ1Q3ReportRows(records);
   const managerRows = prepareJointWorkingRows(records);
   const managerKpi = calculateJointWorkingKpis(managerRows, '2026-10', { includeTerritory: true });
-  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', calculateQ1Q3Reports(prepared, '2026-10'), null, managerKpi);
+  const secondaryOrders = { records: [
+    { sourceRow: 2, orderId: 'SO-1', dateKey: '2026-10-01', empId: '100', orderType: 'VISIT ORDER', status: 'PENDING', basicAmount: 1250.1 },
+    { sourceRow: 3, orderId: 'SO-2', dateKey: '2026-10-02', empId: '100', orderType: 'VISIT ORDER', status: 'APPROVED', basicAmount: 100.2 },
+    { sourceRow: 4, orderId: 'SO-3', dateKey: '2026-10-08', empId: '100', orderType: 'VISIT ORDER', status: 'PENDING', basicAmount: 2400.5 },
+    { sourceRow: 5, orderId: 'SO-4', dateKey: '2026-10-11', empId: '100', orderType: 'VISIT ORDER', status: 'APPROVED', basicAmount: 150.1 },
+    { sourceRow: 6, orderId: 'SO-5', dateKey: '2026-10-12', empId: '200', orderType: 'VISIT ORDER', status: 'PENDING', basicAmount: 200 },
+  ] };
+  const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', calculateQ1Q3Reports(prepared, '2026-10'), secondaryOrders, managerKpi);
   const audit = buildWeeklySalesActualAudit(prepared, '2026-10', addon, managerKpi, { retainedRetailers: { week1: '4' } });
   const rowsFor = (kpi, week) => audit.filter((item) => item.KPI === kpi && item.Week.startsWith(week));
   const sum = (items, field) => items.reduce((total, item) => total + (Number(item[field]) || 0), 0);

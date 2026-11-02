@@ -46,6 +46,8 @@ export function parseSecondaryOrdersBuffer(fileBuffer) {
   if (!hasColumn('Basic order value', 'Basic Amount')) throw new Error('The secondary order report must include “Basic order value” (Excel column V) or legacy “Basic Amount”. Q.5 uses this field only.');
   if (!hasColumn('Date Created', 'Order Date', 'Date', 'Invoice Date', 'Secondary Order Date')) throw new Error('The secondary order report must include a Date Created, Order Date, or Date column to assign weekly buckets.');
   if (!hasColumn('Order No', 'Order Number', 'Order ID', 'Sales Order No', 'Sales Order Number', 'SO Number', 'Invoice No', 'Invoice Number')) throw new Error('The secondary order report must include a unique Order No, Order ID, or Invoice No column.');
+  if (!hasColumn('Order Type')) throw new Error('The secondary order report must include an Order Type column.');
+  if (!hasColumn('Status', 'Order Status')) throw new Error('The secondary order report must include a Status column.');
   const records = rows.map((row, index) => {
     const get = headerGetter(row, columns);
     const firstNonblank = (...names) => names.map((name) => get(name)).find((value) => text(value) !== '') ?? '';
@@ -62,9 +64,14 @@ export function parseSecondaryOrdersBuffer(fileBuffer) {
       dateLabel: date ? dateText(date) : text(rawDate),
       salesUserName: text(firstNonblank('Sales User Name', 'Sales User', 'Employee Name', 'Employee', 'Sales Person', 'Salesperson')),
       empId: text(firstNonblank('Emp ID', 'Employee ID', 'Employee Code', 'Sales User ID', 'User Code')),
+      orderType: text(firstNonblank('Order Type')),
+      status: text(firstNonblank('Status', 'Order Status')),
+      dealerId: text(firstNonblank('Dealer ID', 'Retailer ID', 'Type ID')),
+      companyName: text(firstNonblank('Company', 'Company Name', 'Dealer Name')),
       basicAmount,
       rawBasicAmount: text(rawBasicAmount),
     };
   });
-  return { sheetName, records, stats: { rows: records.length, validDates: records.filter((row) => row.dateKey).length, validBasicAmounts: records.filter((row) => row.basicAmount !== null).length, uniqueOrders: new Set(records.map((row) => row.orderId).filter(Boolean)).size } };
+  const validDates = records.map((row) => row.dateKey).filter(Boolean).sort();
+  return { sheetName, records, stats: { rows: records.length, validDates: records.filter((row) => row.dateKey).length, validBasicAmounts: records.filter((row) => row.basicAmount !== null).length, uniqueOrders: new Set(records.map((row) => row.orderId).filter(Boolean)).size, minDate: validDates[0] || '', maxDate: validDates.at(-1) || '' } };
 }
