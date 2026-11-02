@@ -4,6 +4,7 @@ import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../services/
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../services/q1Q3ReportsService';
 import {
   buildWeeklySalesPerformanceExportRows,
+  getWeeklySalesMonthTotal,
   buildWeeklyJointDaysAudit,
   buildWeeklySalesActualAudit,
   WEEKLY_ACTUAL_AUDIT_COLUMNS,
@@ -61,7 +62,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders, territoryKpiResult) : null, [prepared, month, existingResult, secondaryOrders, territoryKpiResult]);
   const monthManualActuals = manualActuals[month] || {};
   const monthPlans = planOverrides[month] || {};
-  const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans), [addon, monthManualActuals, monthPlans]);
+  const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans, hasMonthData), [addon, monthManualActuals, monthPlans, hasMonthData]);
   const jointDaysAuditRows = useMemo(() => report && addon ? buildWeeklyJointDaysAudit(prepared, month, addon) : [], [report, addon, prepared, month]);
   const weeklyActualAuditRows = useMemo(() => report && addon ? buildWeeklySalesActualAudit(prepared, month, addon, territoryKpiResult, monthManualActuals) : [], [report, addon, prepared, territoryKpiResult, monthManualActuals, month]);
   const beginPlanEdit = () => {
@@ -100,6 +101,14 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const value = addon.actualByRow[row.key]?.[week.key];
     if (value !== null && value !== undefined) return Number(value).toLocaleString('en-IN');
     return addon.statuses[row.key]?.[week.key] || 'SOURCE DATA REQUIRED';
+  };
+  const getMonthTotal = (row) => {
+    if (!report && !['retainedRetailers', 'newRetailers'].includes(row.key)) return 'UPLOAD CHECK-IN REPORT';
+    return getWeeklySalesMonthTotal(addon, row, monthManualActuals, hasMonthData);
+  };
+  const formatMonthTotal = (row) => {
+    const total = getMonthTotal(row);
+    return typeof total === 'number' ? total.toLocaleString('en-IN') : total;
   };
   const updateManual = (key, weekKey, value) => setManualActuals((current) => ({
     ...current,
@@ -152,6 +161,11 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
         'Source Rule': manual ? 'Manual actual or PENDING; see manual detail rows.' : 'Dashboard weekly actual; see source detail rows and contribution columns.' };
       return WEEKLY_ACTUAL_AUDIT_COLUMNS.map((column) => summary[column] ?? '');
     })),
+    ...addon.rows.map((row) => WEEKLY_ACTUAL_AUDIT_COLUMNS.map((column) => ({
+      'Record Type': 'MONTH SUMMARY', KPI: row.label, Week: 'MONTH TOTAL',
+      'Reported Weekly Actual': getMonthTotal(row),
+      'Source Rule': row.key === 'averageOrderValue' ? 'Monthly weighted average = sum of weekly Total Order Amount actuals ÷ sum of weekly order counts.' : 'Monthly total of the four weekly actuals; incomplete or pending weeks remain pending.',
+    })[column] ?? '')),
     ...weeklyActualAuditRows.map((row) => WEEKLY_ACTUAL_AUDIT_COLUMNS.map((column) => row[column])),
   ], `weekly-sales-actuals-source-detail-${month}.csv`);
   const exportWeeklyActualsWorkbook = () => {
@@ -161,14 +175,14 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
       ['Month', monthLabel(month)],
       ['Source', 'Currently loaded Check-In report, uploaded Secondary Order Report, and browser-saved manual actuals. No plan values are included.'],
       [],
-      ['KPI', ...addon.weeks.map((week) => week.label)],
+      ['KPI', ...addon.weeks.map((week) => week.label), 'MONTH TOTAL'],
       ...addon.rows.map((row) => [row.label, ...addon.weeks.map((week) => {
         if (['retainedRetailers', 'newRetailers'].includes(row.key)) {
           const value = monthManualActuals[row.key]?.[week.key];
           return value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
         }
         return addon.actualByRow[row.key]?.[week.key] ?? addon.statuses[row.key]?.[week.key] ?? 'PENDING';
-      })]),
+      }), getMonthTotal(row)]),
       [],
       ['Detail contribution guide', 'Sum the relevant contribution column by KPI and week to reconcile the reported actual. SSP and joint-working days use distinct-contribution columns; retailer visit rows contribute 1 each; order count rows contribute one per unique matched Order ID; order amount rows contribute Basic Order Value from the Secondary Order Report; AOV uses the same matched orders.'],
     ];
@@ -208,6 +222,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
       ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
+      ['MONTH TOTAL', getMonthTotal(kpi)],
       [], WEEKLY_ACTUAL_AUDIT_COLUMNS,
       ...detail.map((row) => WEEKLY_ACTUAL_AUDIT_COLUMNS.map((column) => row[column])),
     ];
@@ -221,6 +236,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
       ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
+      ['MONTH TOTAL', getMonthTotal(kpi)],
       [], ['Source Rule', detail[0]?.['Source Rule'] || 'Manual actual; no Check-In source rows.'],
       ['Reconciliation', 'Filter the Source Detail sheet by week and sum the applicable contribution column(s) to reconcile the reported weekly actual.'],
     ];
@@ -249,13 +265,13 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
         {secondaryOrderFileName && <div className="weekly-order-file"><b>{secondaryOrderFileName}</b><span>{secondaryOrders?.stats?.rows?.toLocaleString()} rows · {addon.weeks.reduce((sum, week) => sum + (addon.matchedSecondaryOrdersByWeek[week.key]?.length || 0), 0).toLocaleString()} qualifying matched Visit Orders for {monthLabel(month)}</span></div>}
         {secondaryOrderError && <p className="weekly-order-error" role="alert">{secondaryOrderError}</p>}
       </section>
-      <div className="table-scroll"><table className="q3-bucket-table weekly-sales-table"><thead><tr><th rowSpan="2">KPI</th>{addon.weeks.map((week) => <th key={week.key} colSpan="2">{week.label}</th>)}</tr><tr>{addon.weeks.flatMap((week) => [<th key={`${week.key}-plan`}>PLAN</th>, <th key={`${week.key}-actual`}>ACTUAL</th>])}</tr></thead>
+      <div className="table-scroll"><table className="q3-bucket-table weekly-sales-table"><thead><tr><th rowSpan="2">KPI</th>{addon.weeks.map((week) => <th key={week.key} colSpan="2">{week.label}</th>)}<th rowSpan="2" className="weekly-month-total">MONTH TOTAL</th></tr><tr>{addon.weeks.flatMap((week) => [<th key={`${week.key}-plan`}>PLAN</th>, <th key={`${week.key}-actual`}>ACTUAL</th>])}</tr></thead>
         <tbody>{addon.rows.map((row) => <tr key={row.key}><th><span>{row.label}</span><small>{row.actualSource}</small></th>{addon.weeks.flatMap((week) => {
           const isManual = row.key === 'retainedRetailers' || row.key === 'newRetailers';
           const actual = getActual(row, week);
           const planValue = editingPlans ? (planDraft[row.key]?.[week.key] ?? row.plan) : Number(monthPlans[row.key]?.[week.key] ?? row.plan);
           return [<td className="weekly-plan" key={`${week.key}-plan`}>{editingPlans ? <input aria-label={`${row.label} ${week.label} plan`} type="number" min="0" step="any" value={planValue} className={isValidPlanValue(planValue) ? '' : 'invalid'} onChange={(event) => setPlanDraft((current) => ({ ...current, [row.key]: { ...(current[row.key] || {}), [week.key]: event.target.value } }))}/> : Number(planValue).toLocaleString('en-IN')}</td>, <td key={`${week.key}-actual`} className="weekly-actual">{isManual ? <input aria-label={`${row.label} ${week.label} actual`} type="number" min="0" step="any" value={monthManualActuals[row.key]?.[week.key] ?? ''} className={isValidManualActual(monthManualActuals[row.key]?.[week.key] ?? '') ? '' : 'invalid'} onChange={(event) => updateManual(row.key, week.key, event.target.value)} placeholder="Pending"/> : typeof actual === 'string' && !/^\d[\d,.]*$/.test(actual) ? <span className="weekly-status">{actual}</span> : actual}</td>];
-        })}</tr>)}</tbody></table></div>
+        })}<td className="weekly-month-total">{typeof getMonthTotal(row) === 'number' ? formatMonthTotal(row) : <span className="weekly-status">{formatMonthTotal(row)}</span>}</td></tr>)}</tbody></table></div>
       <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts each eligible Manager + Territory employee/date once when that person has at least one Check-In qualifying under Manager + Territory Q.2. Q.4 counts unique matching Secondary Order Report Order IDs for Visit Orders with Approved or Pending status, matched to a same-day Check-In by employee ID (name fallback) + date; that Check-In must have Joint Working = YES and Secondary sales type. Q.5 sums Basic Order Value from those same matched orders. Average Order Value = Q.5 ÷ Q.4; currency actuals and average order value are rounded up to whole rupees. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
       <p className="q3-scope-note">The Joint Working Source Audit lists the Q.2 Check-In rows behind this count. Sum “Unique Employee-Date Pair Contribution” to reconcile each weekly actual; repeated qualifying Check-Ins for the same employee and date contribute 0 after the first. A Manager + Territory employee/date is included only if it has at least one qualifying Q.2 retailer Check-In.</p>
       <div className="q3-export-bar"><b>All Weekly Actuals · source rows and contribution columns</b><button className="secondary" disabled={!addon || editingPlans} onClick={exportWeeklyActualsCsv}>Actuals Detail CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWeeklyActualsWorkbook}>Actuals Detail Excel</button></div>

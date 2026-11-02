@@ -334,16 +334,40 @@ export function displayManualActual(value) {
   return Number(value);
 }
 
-export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMonth = {}, planOverridesForMonth = {}) {
+export function getWeeklySalesMonthTotal(addon, row, manualActualsForMonth = {}, monthHasData = true) {
+  if (!addon || !row) return 'PENDING';
+  const manual = row.key === 'retainedRetailers' || row.key === 'newRetailers';
+  if (manual) {
+    const values = addon.weeks.map((week) => manualActualsForMonth[row.key]?.[week.key]);
+    if (values.some((value) => value !== '' && value !== null && value !== undefined && !isValidManualActual(value))) return 'INVALID VALUE';
+    if (values.some((value) => value === '' || value === null || value === undefined)) return 'PENDING';
+    return values.reduce((sum, value) => sum + Number(value), 0);
+  }
+  if (!monthHasData) return 'PENDING';
+  if (row.key === 'averageOrderValue') {
+    const orderCount = addon.weeks.reduce((sum, week) => sum + (addon.actualByRow.orders[week.key] ?? 0), 0);
+    const amounts = addon.weeks.map((week) => addon.actualByRow.orderAmount[week.key]);
+    const missingAmount = amounts.findIndex((value) => value === null || value === undefined);
+    if (missingAmount >= 0) return addon.statuses.orderAmount[addon.weeks[missingAmount].key] || 'PENDING';
+    if (!orderCount) return 'PENDING';
+    return roundUpToWhole(amounts.reduce((sum, value) => sum + Number(value), 0) / orderCount);
+  }
+  const values = addon.weeks.map((week) => addon.actualByRow[row.key]?.[week.key]);
+  const missingIndex = values.findIndex((value) => value === null || value === undefined);
+  if (missingIndex >= 0) return addon.statuses[row.key]?.[addon.weeks[missingIndex].key] || 'PENDING';
+  return values.reduce((sum, value) => sum + Number(value), 0);
+}
+
+export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMonth = {}, planOverridesForMonth = {}, monthHasData = true) {
   if (!addon) return [];
   const actualFor = (row, weekKey) => {
     if (row.key === 'retainedRetailers' || row.key === 'newRetailers') return displayManualActual(manualActualsForMonth[row.key]?.[weekKey]);
     if (row.key === 'orders' || row.key === 'orderAmount') return addon.actualByRow[row.key][weekKey] ?? addon.statuses[row.key][weekKey];
-    if (row.key === 'averageOrderValue') return addon.actualByRow.averageOrderValue[weekKey] ?? addon.statuses.averageOrderValue[weekKey] ?? 'PENDING';
+    if (row.key === 'averageOrderValue') return addon.actualByRow.averageOrderValue[weekKey] ?? addon.statuses.averageOrderValue?.[weekKey] ?? 'PENDING';
     return addon.actualByRow[row.key][weekKey];
   };
   return [
-    ['KPI', ...addon.weeks.flatMap((week) => [`${week.label} PLAN`, `${week.label} ACTUAL`])],
-    ...addon.rows.map((row) => [row.label, ...addon.weeks.flatMap((week) => [Number(planOverridesForMonth[row.key]?.[week.key] ?? row.plan), actualFor(row, week.key)])]),
+    ['KPI', ...addon.weeks.flatMap((week) => [`${week.label} PLAN`, `${week.label} ACTUAL`]), 'MONTH TOTAL ACTUAL'],
+    ...addon.rows.map((row) => [row.label, ...addon.weeks.flatMap((week) => [Number(planOverridesForMonth[row.key]?.[week.key] ?? row.plan), actualFor(row, week.key)]), getWeeklySalesMonthTotal(addon, row, manualActualsForMonth, monthHasData)]),
   ];
 }

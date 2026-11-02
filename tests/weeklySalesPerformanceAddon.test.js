@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../src/services/jointWorkingKpi.js';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../src/services/q1Q3ReportsService.js';
-import { buildWeeklyJointDaysAudit, buildWeeklySalesActualAudit, buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
+import { buildWeeklyJointDaysAudit, buildWeeklySalesActualAudit, buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesMonthTotal, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_ROWS, WEEKLY_SALES_PERFORMANCE_WEEKS, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
 
 const row = (date, extra = {}) => ({
   date, salesUserName: 'Senior A', empId: '100', designation: 'MANAGER-SALES',
@@ -14,6 +14,32 @@ test('weekly sales buckets use 1–7, 8–15, 16–23 and 24–month-end, includ
   assert.deepEqual(['01','07','08','15','16','23','24','31'].map((day) => getWeeklySalesPerformanceBucket(`2026-10-${day}`, '2026-10')), ['week1','week1','week2','week2','week3','week3','week4','week4']);
   assert.equal(getWeeklySalesPerformanceBucket('2026-02-28', '2026-02'), 'week4');
   assert.equal(getWeeklySalesPerformanceBucket('2026-10-01', '2026-09'), null);
+});
+
+test('month total sums weekly actuals and calculates a weighted monthly average order value', () => {
+  const addon = {
+    weeks: WEEKLY_SALES_PERFORMANCE_WEEKS,
+    rows: WEEKLY_SALES_PERFORMANCE_ROWS,
+    actualByRow: {
+      ...Object.fromEntries(WEEKLY_SALES_PERFORMANCE_ROWS.map(({ key }) => [key, Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key: weekKey }) => [weekKey, 0]))])),
+      ssp: { week1: 2, week2: 3, week3: 4, week4: 5 },
+      orders: { week1: 2, week2: 2, week3: 0, week4: 1 },
+      orderAmount: { week1: 100, week2: 300, week3: 0, week4: 500 },
+      averageOrderValue: { week1: 50, week2: 150, week3: null, week4: 500 },
+    },
+    statuses: { orderAmount: {}, orders: {} },
+  };
+  const ssp = WEEKLY_SALES_PERFORMANCE_ROWS.find(({ key }) => key === 'ssp');
+  const aov = WEEKLY_SALES_PERFORMANCE_ROWS.find(({ key }) => key === 'averageOrderValue');
+  const retained = WEEKLY_SALES_PERFORMANCE_ROWS.find(({ key }) => key === 'retainedRetailers');
+  assert.equal(getWeeklySalesMonthTotal(addon, ssp), 14);
+  assert.equal(getWeeklySalesMonthTotal(addon, aov), 180);
+  assert.equal(getWeeklySalesMonthTotal(addon, aov, {}, false), 'PENDING');
+  assert.equal(getWeeklySalesMonthTotal(addon, retained, { retainedRetailers: { week1: 2, week2: 3, week3: 4, week4: 5 } }), 14);
+  assert.equal(getWeeklySalesMonthTotal(addon, retained, { retainedRetailers: { week1: 2 } }), 'PENDING');
+  const exportRows = buildWeeklySalesPerformanceExportRows(addon, { retainedRetailers: { week1: 2, week2: 3, week3: 4, week4: 5 } });
+  assert.equal(exportRows[0].at(-1), 'MONTH TOTAL ACTUAL');
+  assert.equal(exportRows.find(([label]) => label === ssp.label).at(-1), 14);
 });
 
 test('add-on counts unique Manager + Territory employee-days represented in qualifying Q.2 Check-Ins without changing existing KPI results', () => {
