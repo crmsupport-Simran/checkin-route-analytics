@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateJointWorkingKpis, prepareJointWorkingRows } from '../src/services/jointWorkingKpi.js';
 import { calculateQ1Q3Reports, prepareQ1Q3ReportRows } from '../src/services/q1Q3ReportsService.js';
-import { buildWeeklySalesActualAudit, buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
+import { buildWeeklyJointDaysAudit, buildWeeklySalesActualAudit, buildWeeklySalesPerformanceExportRows, calculateWeeklySalesPerformanceAddon, displayManualActual, getWeeklySalesPerformanceBucket, getWeeklySalesPlanMonthOptions, isValidManualActual, isValidPlanValue, readManualActuals, readWeeklySalesPlanOverrides, saveWeeklySalesPlanOverrides, WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, WEEKLY_SALES_PLAN_STORAGE_KEY } from '../src/services/weeklySalesPerformanceAddon.js';
 
 const row = (date, extra = {}) => ({
   date, salesUserName: 'Senior A', empId: '100', designation: 'MANAGER-SALES',
@@ -16,7 +16,7 @@ test('weekly sales buckets use 1–7, 8–15, 16–23 and 24–month-end, includ
   assert.equal(getWeeklySalesPerformanceBucket('2026-10-01', '2026-09'), null);
 });
 
-test('add-on counts unique Manager + Territory employee-days from Joint Working YES rows without changing existing KPI results', () => {
+test('add-on counts unique Manager + Territory employee-days represented in qualifying Q.2 Check-Ins without changing existing KPI results', () => {
   const records = [
     row('01/10/2026', { sourceIndex: 0 }),
     row('08/10/2026', { sourceIndex: 1 }),
@@ -32,9 +32,12 @@ test('add-on counts unique Manager + Territory employee-days from Joint Working 
   const existingSnapshot = structuredClone(existing.values);
   const addon = calculateWeeklySalesPerformanceAddon(prepared, '2026-10', existing, null, territoryKpi);
   assert.deepEqual(addon.actualByRow.ssp, { week1: 1, week2: 2, week3: 0, week4: 2 });
-  assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 2 });
+  assert.deepEqual(addon.actualByRow.jointDays, { week1: 1, week2: 2, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.retailersVisited, { week1: 1, week2: 3, week3: 0, week4: 1 });
   assert.deepEqual(addon.actualByRow.retailersVisited, Object.fromEntries(['week1', 'week2', 'week3', 'week4'].map((week) => [week, territoryKpi.values.q2[week]])));
+  const jointDayAudit = buildWeeklyJointDaysAudit(prepared, '2026-10', addon);
+  assert.equal(jointDayAudit.filter((source) => source.weekKey === 'week2').reduce((sum, source) => sum + source.uniqueEmployeeDatePairContribution, 0), 2);
+  assert.equal(jointDayAudit.filter((source) => source.weekKey === 'week4').reduce((sum, source) => sum + source.uniqueEmployeeDatePairContribution, 0), 1);
   assert.deepEqual(addon.actualByRow.orders, { week1: 0, week2: 0, week3: 0, week4: 0 });
   assert.deepEqual(addon.actualByRow.orderAmount, { week1: 0, week2: 0, week3: 0, week4: 0 });
   assert.deepEqual(existing.values, existingSnapshot, 'add-on calculation must not mutate existing dashboard KPIs');
