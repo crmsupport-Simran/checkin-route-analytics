@@ -49,6 +49,11 @@ function hasApprovedDesignation(value, approvedDesignations) {
   return designations.length > 0 && designations.every((designation) => approvedDesignations.has(designation));
 }
 
+function hasAnyApprovedDesignation(value, approvedDesignations) {
+  const designations = normalizeDesignation(value).split(',').map((designation) => designation.trim()).filter(Boolean);
+  return designations.some((designation) => approvedDesignations.has(designation));
+}
+
 function parseDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   if (typeof value === 'number' && value > 0) {
@@ -186,30 +191,34 @@ export function calculateJointWorkingKpis(prepared, month, { includeTerritory = 
     // (Executive/BDO).
     const isManagerByDesignation = hasApprovedDesignation(row.designation, q1Q2Designations);
     const isBdoByJointDesignation = hasApprovedDesignation(row.jointWorkingDesignation, JUNIOR_DESIGNATIONS);
+    const isQ2BdoByJointDesignation = includeTerritory
+      ? hasAnyApprovedDesignation(row.jointWorkingDesignation, JUNIOR_DESIGNATIONS)
+      : isBdoByJointDesignation;
     const hasJointPartnerName = Boolean(row.seniorName);
     const isQualifyingJointWork = isManagerByDesignation && row.jointWorking === 'YES' && isBdoByJointDesignation && hasJointPartnerName;
+    const isQualifyingQ2JointWork = isManagerByDesignation && row.jointWorking === 'YES' && isQ2BdoByJointDesignation && hasJointPartnerName;
     const q2Type = row.type === 'DEALER' || row.type === 'OTHER';
     if (row.jointWorking === 'YES' && isManagerByDesignation && hasJointPartnerName) {
       q1SeniorNameDays.add(`${row.managerIdentityKey}\u0000${row.dateKey}`);
       if (!isBdoByJointDesignation) q1JuniorDesignationExcludedRows.push({ date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', senior: row.seniorLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', type: row.typeLabel || '(blank)', reason: 'Joint Working Designation is not an approved Executive/BDO designation' });
     }
-    if (isQualifyingJointWork && !q2Type) q2TypeExcludedRows += 1;
+    if (isQualifyingQ2JointWork && !q2Type) q2TypeExcludedRows += 1;
     if (row.jointWorking === 'YES' && isManagerByDesignation) q2SeniorRows += 1;
-    if (row.jointWorking === 'YES' && isManagerByDesignation && isBdoByJointDesignation) q2JuniorRows += 1;
-    if (row.jointWorking === 'YES' && isManagerByDesignation && isBdoByJointDesignation && hasJointPartnerName) q2NamedRoleRows += 1;
+    if (row.jointWorking === 'YES' && isManagerByDesignation && isQ2BdoByJointDesignation) q2JuniorRows += 1;
+    if (row.jointWorking === 'YES' && isManagerByDesignation && isQ2BdoByJointDesignation && hasJointPartnerName) q2NamedRoleRows += 1;
     if (row.jointWorking === 'YES' && row.seniorName && q2Type) {
       q2JointNamedDealerOtherRows += 1;
       const groupKey = `${row.designationLabel || '(blank)'}\u0000${row.jointWorkingDesignationLabel || '(blank)'}\u0000${row.designationSalesTypeLabel || '(blank)'}\u0000${row.typeLabel || '(blank)'}\u0000${row.seniorLabel || '(blank)'}`;
-      const currentGroup = q2ByDesignationTypeSenior.get(groupKey) || { designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', designationSalesType: row.designationSalesTypeLabel || '(blank)', type: row.typeLabel || '(blank)', senior: row.seniorLabel || '(blank)', count: 0, juniorDesignation: isManagerByDesignation && isBdoByJointDesignation };
+      const currentGroup = q2ByDesignationTypeSenior.get(groupKey) || { designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', designationSalesType: row.designationSalesTypeLabel || '(blank)', type: row.typeLabel || '(blank)', senior: row.seniorLabel || '(blank)', count: 0, juniorDesignation: isManagerByDesignation && isQ2BdoByJointDesignation };
       currentGroup.count += 1;
       q2ByDesignationTypeSenior.set(groupKey, currentGroup);
     }
-    if (row.jointWorking === 'YES' && (!isQualifyingJointWork || !q2Type)) {
+    if (row.jointWorking === 'YES' && (!isQualifyingQ2JointWork || !q2Type)) {
       const reasons = [];
       if (!isManagerByDesignation) reasons.push('Sales User Designation is not an approved Manager designation');
-      if (!isBdoByJointDesignation) reasons.push('Joint Working Designation is not an approved Executive/BDO designation');
+      if (!isQ2BdoByJointDesignation) reasons.push('Joint Working Designation has no approved Executive/BDO designation token');
       if (!hasJointPartnerName) reasons.push('Joint Working Name is blank');
-      if (isQualifyingJointWork && !q2Type) reasons.push('Type is not DEALER or OTHER');
+      if (isQualifyingQ2JointWork && !q2Type) reasons.push('Type is not DEALER or OTHER');
       const reason = reasons.join('; ');
       increment(q2ExclusionReasons, reason);
       excludedQ2Rows.push({ date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', designationSalesType: row.designationSalesTypeLabel || '(blank)', type: row.typeLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', senior: row.seniorLabel || '(blank)', company: row.companyName || row.dealerChannelPartner || '(blank)', reason });
@@ -234,27 +243,27 @@ export function calculateJointWorkingKpis(prepared, month, { includeTerritory = 
         managerDays.qualifyingRows += 1;
         q1ManagerDaysByBucket[bucket.key].set(row.managerIdentityKey, managerDays);
       }
-      if (q2Type) {
-        for (const bucket of matchingBuckets) {
-          q2[bucket.key] += 1;
-          q2SourceRowsByBucket[bucket.key].push({
-            sourceRow: row.sourceRow,
-            date: row.dateKey,
-            employee: row.salesUserName,
-            empId: row.empId,
-            managerDesignation: row.designationLabel,
-            juniorDesignation: row.jointWorkingDesignationLabel,
-            jointWorkingName: row.seniorLabel,
-            type: row.typeLabel,
-            company: row.companyName,
-            distributorCode: row.dealerChannelPartnerCode,
-            distributor: row.dealerChannelPartner,
-            zonalManager: row.zonalManager,
-          });
-        }
-        if (row.type === 'DEALER') q2Dealer += 1;
-        else q2Other += 1;
+    }
+    if (isQualifyingQ2JointWork && q2Type) {
+      for (const bucket of matchingBuckets) {
+        q2[bucket.key] += 1;
+        q2SourceRowsByBucket[bucket.key].push({
+          sourceRow: row.sourceRow,
+          date: row.dateKey,
+          employee: row.salesUserName,
+          empId: row.empId,
+          managerDesignation: row.designationLabel,
+          juniorDesignation: row.jointWorkingDesignationLabel,
+          jointWorkingName: row.seniorLabel,
+          type: row.typeLabel,
+          company: row.companyName,
+          distributorCode: row.dealerChannelPartnerCode,
+          distributor: row.dealerChannelPartner,
+          zonalManager: row.zonalManager,
+        });
       }
+      if (row.type === 'DEALER') q2Dealer += 1;
+      else q2Other += 1;
     }
     if (q3Designations.has(row.designation) && row.type === 'CHANNEL PARTNER') {
       q3QualifyingRows += 1;

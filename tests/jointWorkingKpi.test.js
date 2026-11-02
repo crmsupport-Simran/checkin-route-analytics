@@ -110,3 +110,18 @@ test('territory-inclusive copy adds Territory roles while the original KPI remai
     }
   }
 });
+
+test('territory Q2 accepts a mixed Joint Working designation with an approved BDO token while preserving Q1', () => {
+  const records = [{
+    date: '06/10/2026', salesUserName: 'Territory Officer', empId: '200', designation: 'TERRITORY SALES OFFICER',
+    jointWorking: 'YES', jointWorkingName: 'Senior and BDO', jointWorkingDesignation: 'AGM-SALES, EXECUTIVE-SALES', type: 'DEALER',
+  }];
+  const prepared = prepareJointWorkingRows(records);
+  const managersOnly = calculateJointWorkingKpis(prepared, '2026-10');
+  const managerAndTerritory = calculateJointWorkingKpis(prepared, '2026-10', { includeTerritory: true });
+
+  assert.equal(managersOnly.values.q2.week1, 0);
+  assert.equal(managerAndTerritory.values.q1.week1, 0);
+  assert.equal(managerAndTerritory.values.q2.week1, 1);
+  assert.equal(managerAndTerritory.details.q2SourceRowsByBucket.week1.length, 1);
+});
