@@ -5,10 +5,39 @@ const dateLabel = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateS
 const timeLabel = (value) => value instanceof Date && Number.isFinite(value.getTime()) ? value.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
 const durationLabel = (value) => Number.isFinite(value) ? `${Math.floor(value * 24)}:${String(Math.floor(value * 1440) % 60).padStart(2, '0')}` : '—';
 
+function SearchableMultiSelect({ id, label, options, selected, onChange, allLabel }) {
+  const [query, setQuery] = useState('');
+  const visible = options.filter((value) => value.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const selectedSet = new Set(selected == null ? options : selected);
+  const toggleOne = (value) => {
+    const next = new Set(selected == null ? options : selected);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    onChange(next.size === options.length ? null : [...next]);
+  };
+  const toggleVisible = () => {
+    const next = new Set(selected == null ? options : selected);
+    const matchingAreSelected = visible.every((value) => next.has(value));
+    visible.forEach((value) => matchingAreSelected ? next.delete(value) : next.add(value));
+    onChange(next.size === options.length ? null : [...next]);
+  };
+  const selectionLabel = selected == null || selected.length === options.length ? allLabel : selected.length === 0 ? 'None selected' : `${selected.length} selected`;
+  return <div className="jw-multiselect-field">
+    <label id={`${id}-label`}>{label}</label>
+    <details className="jw-multiselect" aria-labelledby={`${id}-label`}>
+      <summary aria-label={label}>{selectionLabel}</summary>
+      <div className="jw-multiselect-popover">
+        <input type="search" aria-label={`Search ${label}`} placeholder={`Search ${label.toLocaleLowerCase()}…`} value={query} onChange={(event) => setQuery(event.target.value)}/>
+        <div className="jw-multiselect-actions"><button type="button" onClick={toggleVisible}>{visible.every((value) => selectedSet.has(value)) ? 'Deselect' : 'Select'} matching ({visible.length})</button><button type="button" onClick={() => onChange(null)}>Select all</button><button type="button" onClick={() => onChange([])}>Clear</button></div>
+        <div className="jw-multiselect-options">{visible.map((value) => <label key={value}><input type="checkbox" checked={selectedSet.has(value)} onChange={() => toggleOne(value)}/><span>{value}</span></label>)}{!visible.length && <p>No matches</p>}</div>
+      </div>
+    </details>
+  </div>;
+}
+
 export default function JointWorkingReport({ report, attendance }) {
   const defaults = useMemo(() => {
     const dates = (report?.records || []).map((row) => row.dateKey).filter(Boolean).sort();
-    return { dateFrom: dates[0] || '', dateTo: dates.at(-1) || '', bdoName: '', jointWorkingName: '' };
+    return { dateFrom: dates[0] || '', dateTo: dates.at(-1) || '', bdoNames: null, jointWorkingNames: null };
   }, [report]);
   const [filters, setFilters] = useState(defaults);
   const [generated, setGenerated] = useState(null);
@@ -30,8 +59,8 @@ export default function JointWorkingReport({ report, attendance }) {
     <section className="card joint-working-filters">
       <div><label htmlFor="jw-date-from">Date From</label><input id="jw-date-from" type="date" min={options.dateFromAvailable || undefined} max={options.dateToAvailable || undefined} value={filters.dateFrom} onChange={(event) => update('dateFrom', event.target.value)}/></div>
       <div><label htmlFor="jw-date-to">Date To</label><input id="jw-date-to" type="date" min={options.dateFromAvailable || undefined} max={options.dateToAvailable || undefined} value={filters.dateTo} onChange={(event) => update('dateTo', event.target.value)}/></div>
-      <div><label htmlFor="jw-bdo">BDO Name · Optional</label><select id="jw-bdo" value={filters.bdoName} onChange={(event) => update('bdoName', event.target.value)}><option value="">All BDOs</option>{options.bdoOptions.map((name) => <option key={name}>{name}</option>)}</select></div>
-      <div><label htmlFor="jw-name">Joint Working Name · Optional</label><select id="jw-name" value={filters.jointWorkingName} onChange={(event) => update('jointWorkingName', event.target.value)}><option value="">All joint working names</option>{options.jointWorkingNameOptions.map((name) => <option key={name}>{name}</option>)}</select></div>
+      <SearchableMultiSelect id="jw-bdo" label="BDO Name · Optional" allLabel="All BDOs" options={options.bdoOptions} selected={filters.bdoNames} onChange={(value) => update('bdoNames', value)}/>
+      <SearchableMultiSelect id="jw-name" label="Joint Working Name · Optional" allLabel="All joint working names" options={options.jointWorkingNameOptions} selected={filters.jointWorkingNames} onChange={(value) => update('jointWorkingNames', value)}/>
       <div className="joint-working-actions"><button className="primary" disabled={!canGenerate} onClick={generate}>Generate Report</button><button className="secondary" disabled={!generated?.visits.length} onClick={download}>Download Excel</button></div>
     </section>
     {!report && <div className="notice error">Upload the Check-In Report before generating a Joint Working Report.</div>}
@@ -48,6 +77,7 @@ export default function JointWorkingReport({ report, attendance }) {
       {generated.unmatchedEmployeeIds > 0 && <div className="notice">Attendance could not be matched by Employee ID and date for {generated.unmatchedEmployeeIds} Employee ID(s). Attendance times remain blank for those records.</div>}
       {generated.unmatchedAttendanceDays > 0 && <div className="notice">No matching Attendance record was found for {generated.unmatchedAttendanceDays} BDO/date combination(s). Start Time and Stop Time are blank for those visits.</div>}
       {(generated.missingCheckIn || generated.missingCheckOut) > 0 && <div className="notice">Missing source timestamps: {generated.missingCheckIn} Check-In and {generated.missingCheckOut} Check-Out values. Missing values remain blank; durations are not calculated when either time is unavailable.</div>}
+      {generated.attendanceDateFrom && generated.attendanceDateTo && (filters.dateFrom < generated.attendanceDateFrom || filters.dateTo > generated.attendanceDateTo) && <div className="notice">The loaded Attendance Report covers {dateLabel(generated.attendanceDateFrom)} to {dateLabel(generated.attendanceDateTo)}. Dates outside that range have no attendance source, so Start Time and Stop Time remain blank for those visits.</div>}
       {generated.duplicateCount > 0 && <div className="notice">Removed {generated.duplicateCount.toLocaleString()} exact duplicate imported row(s). Repeat visits with different source values remain included.</div>}
       {!generated.visits.length ? <section className="card empty">No Joint Working = YES visits match the selected date range and filters.</section> : <>
         <section className="card table-card joint-working-preview"><div className="section-head"><div><span className="eyebrow">VISIT DETAILS PREVIEW</span><h3>{generated.visits.length.toLocaleString()} visits · {generated.bdoCount.toLocaleString()} BDOs</h3></div><span>{dateLabel(filters.dateFrom)} – {dateLabel(filters.dateTo)}</span></div>

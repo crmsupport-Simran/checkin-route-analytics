@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','2.5 · 5 November 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','2.6 · 5 November 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -211,15 +211,15 @@ bullets([
 ])
 
 doc.add_heading('14. Joint Working Report',level=1)
-para('This add-on is a separate navigation tab. It reuses the currently loaded Check-In and Attendance reports and does not add another upload or alter existing report calculations. Set Date From/Date To and optionally choose a BDO Name and Joint Working Name, then select Generate Report. The preview shows visit details and grouped date/BDO totals; Download Excel exports exactly two worksheets: Visit Details and Summary.')
+para('This add-on is a separate navigation tab. It reuses the currently loaded Check-In and Attendance reports and does not add another upload or alter existing report calculations. Set Date From/Date To and optionally search and multi-select BDO Name and Joint Working Name values; Select matching applies to the current search, Select all chooses every value, and Clear selects none. Select Generate Report to preview visit details and grouped date/BDO totals; Download Excel exports exactly two worksheets: Visit Details and Summary.')
 table(['Report field / behavior','Source mapping and calculation'],[
-('Eligibility and filters','Include only Check-In rows with Joint Working = YES within the selected inclusive date range. Optional BDO Name and Joint Working Name filters are applied before preview/export.'),
+('Eligibility and filters','Include only Check-In rows with Joint Working = YES within the selected inclusive date range. Optional searchable, multi-select BDO Name and Joint Working Name filters are applied before preview/export. All means all values; Clear means no values.'),
 ('Visit Details columns','S.No., Date, BDO Name, Start Time, Stop Time, Counter No., Check In, Check Out, Duration, Company Name, Type, Joint Working Name, Joint Working Designation.'),
-('Attendance matching','Attendance Start Time and Stop Time match Employee ID + working date. Employee-name fallback is used only when Check-In Employee ID is unavailable. If Attendance is unavailable or no match exists, times remain blank; no timing is inferred.'),
+('Attendance matching','Attendance Start Time and Stop Time match Employee ID + working date. Employee-name fallback is used only when Check-In Employee ID is unavailable. The preview states the loaded Attendance date coverage. Dates outside that coverage, or with no employee/date match, have blank times; no timing is inferred.'),
 ('Counters and ordering','Counter No. restarts at 1 for each BDO/date. Rows sort by date, BDO Name, then Check In time. Exact duplicate imported records are removed using employee/date/times and visit fields; repeat visits with distinct source values remain.'),
 ('Duration','Check Out minus Check In for valid nonnegative spans. Missing or invalid timestamps leave duration blank.'),
 ('Summary','Date, BDO Name, Total Visits, earliest valid Check In, latest valid Check Out; grouped per date and BDO with a final Grand Total visit count.'),
-('Warnings','The preview reports unavailable Attendance, unmatched Employee IDs, BDO/date attendance gaps, missing Check-In/Check-Out values, exact duplicates removed, visit count, and BDO count.'),
+('Warnings','The preview reports unavailable Attendance, loaded Attendance date coverage, unmatched Employee IDs, BDO/date attendance gaps, missing Check-In/Check-Out values, exact duplicates removed, visit count, and BDO count.'),
 ('Excel formatting','Exactly two sheets: Visit Details and Summary. Both include a merged dark-blue title row, dark-blue white bold headers, alternating shading, borders, centered cells, sized columns, date/time/duration formats, filters, and frozen title/header rows.')],[2.0,5.45])
 
 doc.add_heading('15. CHECKIN-OUT REPORT',level=1)

@@ -64,8 +64,8 @@ export function buildJointWorkingReport(report, attendance, filters) {
     const yes = ['YES', 'Y', 'TRUE', '1'].includes(clean(row.jointWorking).toLocaleUpperCase());
     const key = row.dateKey || localDateKey(row.date);
     return yes && key >= filters.dateFrom && key <= filters.dateTo
-      && (!filters.bdoName || nameKey(row.salesUserName) === nameKey(filters.bdoName))
-      && (!filters.jointWorkingName || nameKey(row.jointWorkingName) === nameKey(filters.jointWorkingName));
+      && (filters.bdoNames == null || filters.bdoNames.some((name) => nameKey(row.salesUserName) === nameKey(name)))
+      && (filters.jointWorkingNames == null || filters.jointWorkingNames.some((name) => nameKey(row.jointWorkingName) === nameKey(name)));
   }).filter((row) => {
     const key = fingerprint(row);
     if (seen.has(key)) { duplicateCount++; return false; }
@@ -114,6 +114,7 @@ export function buildJointWorkingReport(report, attendance, filters) {
     lastCheckOut: row.checkOuts.length ? new Date(Math.max(...row.checkOuts.map(Number))) : null,
   }));
   const dates = (report?.records || []).map((row) => row.dateKey || localDateKey(row.date)).filter(Boolean).sort();
+  const attendanceDates = (attendance?.records || []).map((row) => row.dateKey).filter(Boolean).sort();
   return {
     visits, summary, duplicateCount, unmatchedEmployeeIds: unmatchedIds.size,
     unmatchedEmployeeIdList: [...unmatchedIds], missingCheckIn: visits.filter((row) => !row.checkIn).length,
@@ -121,6 +122,7 @@ export function buildJointWorkingReport(report, attendance, filters) {
     missingCheckOut: visits.filter((row) => !row.checkOut).length,
     bdoCount: new Set(visits.map((row) => row.bdoName)).size,
     dateFromAvailable: dates[0] || '', dateToAvailable: dates.at(-1) || '',
+    attendanceDateFrom: attendanceDates[0] || '', attendanceDateTo: attendanceDates.at(-1) || '',
     bdoOptions: [...new Map((report?.records || []).filter((row) => ['YES', 'Y', 'TRUE', '1'].includes(clean(row.jointWorking).toLocaleUpperCase())).map((row) => [nameKey(row.salesUserName), clean(row.salesUserName)]).filter(([key, value]) => key && value)).values()].sort(),
     jointWorkingNameOptions: [...new Map((report?.records || []).filter((row) => ['YES', 'Y', 'TRUE', '1'].includes(clean(row.jointWorking).toLocaleUpperCase())).map((row) => [nameKey(row.jointWorkingName), clean(row.jointWorkingName)]).filter(([key, value]) => key && value)).values()].sort(),
   };
