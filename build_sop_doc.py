@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','2.4 · 2 November 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','2.5 · 5 November 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -94,6 +94,7 @@ table(['Tab / section','What it shows','Primary inputs'],[
 ('Tour Plan','Daily or monthly planned dealer visits, route map, approvals/locks, and plan-versus-actual matching.','Dealer Master required; Attendance and Check-In add route context.'),
 ('Check-in Analysis','Repeated employee/date/location/type groups, breakdowns, filters, and verification export.','Check-In workbook.'),
 ('Joint Working KPI','Original Manager-only Q1/Q2/Q3 table, plus the separate Manager + Territory version.','Check-In workbook.'),
+('Joint Working Report','Date-wise Joint Working = YES visit details with Attendance times and BDO/date summary; Excel download.','Currently loaded Check-In workbook; Attendance Report for Start/Stop.'),
 ('Q1–Q2 Reports','Dedicated Manager + Territory Q1 visit-day report and Q2 unique Channel Partner report.','Check-In workbook.'),
 ('Weekly Sales Performance','Weekly plan versus actual rows, editable plans, manual retailer actuals, and Secondary Order Report upload for Q.4/Q.5.','Check-In workbook + Secondary Order Report.'),
 ('CHECKIN-OUT REPORT','Employee-day attendance and visit-category summary with filters and exports.','Check-In workbook + optional Secondary Order Report.'),
@@ -209,7 +210,19 @@ bullets([
 'Expected KM covers start anchor → time-ordered visits → end anchor. If a required coordinate is unavailable, distance is not calculated. Road route is preferred; Haversine straight-line fallback is labeled estimated. Route audit exports show segments and coordinate source.'
 ])
 
-doc.add_heading('14. CHECKIN-OUT REPORT',level=1)
+doc.add_heading('14. Joint Working Report',level=1)
+para('This add-on is a separate navigation tab. It reuses the currently loaded Check-In and Attendance reports and does not add another upload or alter existing report calculations. Set Date From/Date To and optionally choose a BDO Name and Joint Working Name, then select Generate Report. The preview shows visit details and grouped date/BDO totals; Download Excel exports exactly two worksheets: Visit Details and Summary.')
+table(['Report field / behavior','Source mapping and calculation'],[
+('Eligibility and filters','Include only Check-In rows with Joint Working = YES within the selected inclusive date range. Optional BDO Name and Joint Working Name filters are applied before preview/export.'),
+('Visit Details columns','S.No., Date, BDO Name, Start Time, Stop Time, Counter No., Check In, Check Out, Duration, Company Name, Type, Joint Working Name, Joint Working Designation.'),
+('Attendance matching','Attendance Start Time and Stop Time match Employee ID + working date. Employee-name fallback is used only when Check-In Employee ID is unavailable. If Attendance is unavailable or no match exists, times remain blank; no timing is inferred.'),
+('Counters and ordering','Counter No. restarts at 1 for each BDO/date. Rows sort by date, BDO Name, then Check In time. Exact duplicate imported records are removed using employee/date/times and visit fields; repeat visits with distinct source values remain.'),
+('Duration','Check Out minus Check In for valid nonnegative spans. Missing or invalid timestamps leave duration blank.'),
+('Summary','Date, BDO Name, Total Visits, earliest valid Check In, latest valid Check Out; grouped per date and BDO with a final Grand Total visit count.'),
+('Warnings','The preview reports unavailable Attendance, unmatched Employee IDs, BDO/date attendance gaps, missing Check-In/Check-Out values, exact duplicates removed, visit count, and BDO count.'),
+('Excel formatting','Exactly two sheets: Visit Details and Summary. Both include a merged dark-blue title row, dark-blue white bold headers, alternating shading, borders, centered cells, sized columns, date/time/duration formats, filters, and frozen title/header rows.')],[2.0,5.45])
+
+doc.add_heading('15. CHECKIN-OUT REPORT',level=1)
 para('This is a separate navigation tab and does not change the Q1–Q3 Reports Dashboard, Manager-only Joint Working KPI, or Weekly Sales Performance calculations. It reuses the currently loaded Check-In workbook and adds no mandatory upload.')
 table(['Report field','Source mapping and calculation'],[
 ('DATE / Month','Date; Month is derived from the parsed date.'),
@@ -225,16 +238,16 @@ table(['Report field','Source mapping and calculation'],[
 ('Filters and exports','The order is heading/exports → filters → detail table → uploader, source notes, and KPI cards. Screenshot View in the heading opens all matching rows full-screen. Filters cover month, dates, BDO, state, managers, attendance, and remarks; they apply to cards, rows, and exports. CSV, Excel, and Print include all matches; Page Image saves the current page. The 13-column table supports sorting and pagination; cells are centered and columns scroll horizontally. Headers use blue, yellow, and green bands. Excel includes the merged blue report title, yellow identity headers, green metric headers, centered wrapped cells, grid borders, adjustable column widths, row alert shading, red rule-triggered values (check-in after 10:30, check-out before 19:30, work duration under 7 hours, and counters visited under 8), and brown pending or missing-source labels. SALE is displayed as a comma-separated whole number with no trailing decimal. The workbook is a formatted snapshot of all currently filtered rows.')],[2.05,5.4])
 para('KPI cards show Unique BDOs, Employee-day records, Valid Check-Ins, Valid Check-Outs, Total and Average Working Time, Total Counters Planned, Total Counters Visited, Counter Achievement %, Total CP Visits, Total Order Count, Total Sales, and records with missing/invalid attendance timestamps. Counter Planned is 10 for each employee-day. Counter Achievement is Total Counters Visited ÷ Total Counters Planned × 100 when planned is greater than zero. Missing source values are not converted to zero. For secondary orders, rows outside the uploaded file date range remain pending; rows within the range with no matched order show zero. Duplicate Order IDs are counted once, unmatched orders are excluded and reported in uploader audit counts, and missing Basic Order Value prevents a complete sales total.')
 
-doc.add_heading('15. Inputs, storage, and interpretation',level=1)
+doc.add_heading('16. Inputs, storage, and interpretation',level=1)
 table(['Input','Used for','Important field behavior'],[
 ('Check-In / Check-Out workbook','All check-in dashboards and KPIs.','Date, employee, ID, designation, Type, Joint Working fields, distributor fields, Type ID, sales type, order count/value and GPS are used where present.'),
-('Attendance Report','Dashboard enrichments, Tour Plan anchors, Employee Tour Plan.','Start/Stop time, GPS, employee ID, date, Google KM, address and manager context.'),
+('Attendance Report','Dashboard enrichments, Tour Plan anchors, Employee Tour Plan, Joint Working Report.','Start/Stop time, GPS, employee ID, date, Google KM, address and manager context. Joint Working Report uses exact employee ID/date matching; no attendance time is inferred.'),
 ('Dealer Master','Tour Plan and optional check-in GPS matching.','Company/customer identity, account/customer code, assignments, plan dates, beat, address, GPS.'),
 ('Secondary Order Report (Weekly Sales Performance uploader)','Weekly Sales Q.4 order count, Q.5 total order amount, and Average Order Value; also supplies order count and sale to CHECKIN-OUT REPORT.','Requires a unique Order ID/Order No/Invoice No, Date Created or supported order date, employee ID or sales user name, Order Type, Status, and Basic Order Value. Weekly Q.4/Q.5 use same-day matches to qualifying secondary Check-Ins, VISIT ORDER, and APPROVED or PENDING status. The upload is browser-memory only and is cleared on refresh/close.'),
 ],[1.65,2.5,3.3])
 para('The app processes Excel/CSV in the browser. Uploaded report files remain in page memory only and are cleared on refresh or close; weekly plans, manual actuals, and appearance are saved locally. Route display uses map tiles and route calculation may send coordinates to the configured public routing service; workbook rows and employee names are not needed for that route request. Routing availability can affect whether distance is road-based or estimated.')
 
-doc.add_heading('16. Reconciliation checklist',level=1)
+doc.add_heading('17. Reconciliation checklist',level=1)
 numbered([
 'Confirm the current Check-In workbook name and the selected month.',
 'Confirm source Date values and whether they are Excel dates or day-first text. Verify any blank/invalid date audit rows.',

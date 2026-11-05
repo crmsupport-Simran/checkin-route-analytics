@@ -6,6 +6,7 @@ import IntegrityAnalysis from './components/IntegrityAnalysis';
 import TourPlan from './components/TourPlan';
 import JointWorkingKpi from './components/JointWorkingKpi';
 import EmployeeTourPlanReport from './components/EmployeeTourPlanReport';
+import JointWorkingReport from './components/JointWorkingReport';
 import Q1Q3ReportsDashboard from './components/Q1Q3ReportsDashboard';
 import WeeklySalesPerformanceDashboard from './components/WeeklySalesPerformanceDashboard';
 import CheckinOutReport from './components/CheckinOutReport';
@@ -140,6 +141,7 @@ export default function App() {
         <button className={view === 'tour' ? 'active' : ''} onClick={() => setView('tour')}>Tour Plan</button>
         <button className={view === 'integrity' ? 'active' : ''} onClick={() => setView('integrity')}>Check-in Analysis</button>
         <button className={view === 'joint-working' ? 'active' : ''} onClick={() => setView('joint-working')}>Joint Working KPI</button>
+        <button className={view === 'joint-working-report' ? 'active' : ''} onClick={() => setView('joint-working-report')}>Joint Working Report</button>
         <button className={view === 'q1-q3-reports' ? 'active' : ''} onClick={() => setView('q1-q3-reports')}>Q1–Q2 Reports</button>
         <button className={view === 'weekly-sales' ? 'active' : ''} onClick={() => setView('weekly-sales')}>Weekly Sales Performance</button>
         <button className={view === 'checkin-out' ? 'active' : ''} onClick={() => setView('checkin-out')}>CHECKIN-OUT REPORT</button>
@@ -160,6 +162,7 @@ export default function App() {
       {error && <div className="notice error">{error}</div>}
       {view === 'tour' && <TourPlan dealers={dealers} report={report} attendance={attendance}/>}
       {view === 'joint-working' && <JointWorkingKpi report={report}/>}
+      {view === 'joint-working-report' && <JointWorkingReport report={report} attendance={attendance}/>}
       {view === 'q1-q3-reports' && <Q1Q3ReportsDashboard report={report}/>}
       {view === 'weekly-sales' && <WeeklySalesPerformanceDashboard report={report}/>}
       {view === 'checkin-out' && <CheckinOutReport report={report}/>}
