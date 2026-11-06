@@ -167,3 +167,12 @@ footer { color: #77839a; }
   .brand p { font-size: 10px; }
   .container { padding: 14px 10px 34px; }
 }
+
+:root[data-theme="dark"] .weekly-sales-table thead tr:first-child th{background:#1b3550;color:#e5efff}
+:root[data-theme="dark"] .weekly-sales-table thead tr:nth-child(2) th{background:#2a3548;color:#e6edf7}
+:root[data-theme="dark"] .weekly-sales-table thead tr:nth-child(2) th:nth-child(2),
+:root[data-theme="dark"] .weekly-sales-table thead tr:nth-child(2) th:nth-child(4),
+:root[data-theme="dark"] .weekly-sales-table thead tr:nth-child(2) th:nth-child(6),
+:root[data-theme="dark"] .weekly-sales-table thead tr:nth-child(2) th:nth-child(8){background:#173329;color:#b7edcb}
+:root[data-theme="dark"] .weekly-sales-table th.weekly-month-total{background:#17383e;color:#dff7f8}
+:root[data-theme="dark"] .weekly-sales-table tbody td.weekly-plan{background:#1b2738;color:#d8e6ff}
