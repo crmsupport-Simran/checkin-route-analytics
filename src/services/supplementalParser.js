@@ -99,6 +99,7 @@ export function parseNcotBuffer(fileBuffer) {
   const dateTimeColumns = ['Created At', 'Created On', 'Creation Date Time', 'Dealer Created At', 'Retailer Created At', 'Created Date Time', 'Date Created'];
   const createdDateColumns = ['Created Date', 'Creation Date', 'Dealer Created Date', 'Retailer Created Date', 'Date of Creation', 'NCOT Date'];
   const createdTimeColumns = ['Created Time', 'Creation Time', 'Dealer Created Time', 'Retailer Created Time', 'Time Created', 'NCOT Time', 'Created At'];
+  const firstOrderDateColumns = ['First Order Date', 'First Sales Order Date', 'First Transaction Date'];
   if (!hasColumn(...dateTimeColumns, ...createdDateColumns)) throw new Error('The NCOT report must include a dealer creation date or timestamp (for example, Created At or Created Date).');
   if (!hasColumn('Created By Employee ID', 'Created By Employee Code', 'Created By Emp ID', 'Employee ID', 'Employee Code', 'Emp ID', 'Sales User ID', 'BDO ID', 'Created By ID', 'Assign User', 'Sales User Name', 'Employee Name', 'BDO Name')) {
     throw new Error('The NCOT report must include Employee Code or Assign User (or equivalent employee identity) so new dealers can be matched to Check-Ins.');
@@ -121,6 +122,11 @@ export function parseNcotBuffer(fileBuffer) {
     const rawCreatedDate = timeOnlyValue ? (rawCreatedDateOnly || '') : (rawCreatedAt || rawCreatedDateOnly);
     const rawCreatedTime = timeOnlyValue ? rawCreatedAt : firstNonblank(...createdTimeColumns.filter((name) => name !== 'Created At'));
     const parsedDate = dateValue(rawCreatedDate);
+    const firstOrderDate = dateValue(firstNonblank(...firstOrderDateColumns));
+    const rawReportMonth = text(get('Month'));
+    const reportMonthMatch = rawReportMonth.match(/^([A-Za-z]{3,})[-\s]+(\d{4})$/);
+    const reportMonthNumber = reportMonthMatch ? new Date(`${reportMonthMatch[1]} 1, ${reportMonthMatch[2]}`).getMonth() + 1 : 0;
+    const reportMonthKey = reportMonthNumber ? `${reportMonthMatch[2]}-${String(reportMonthNumber).padStart(2, '0')}` : '';
     const explicitDateTime = rawCreatedDate instanceof Date
       ? rawCreatedDate.getHours() !== 0 || rawCreatedDate.getMinutes() !== 0 || rawCreatedDate.getSeconds() !== 0
       : /(?:[T ]\d{1,2}:\d{2})/.test(text(rawCreatedDate));
@@ -138,6 +144,8 @@ export function parseNcotBuffer(fileBuffer) {
     return {
       sourceRow,
       dateKey: dateKey(parsedDate),
+      reportMonthKey,
+      firstOrderDateKey: dateKey(firstOrderDate),
       createdAt,
       createdAtLabel: createdAt ? createdAt.toLocaleString('en-IN') : text(rawCreatedAt || rawCreatedDate),
       hasCreationTime: Boolean(createdAt),

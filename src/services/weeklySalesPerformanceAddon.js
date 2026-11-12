@@ -240,7 +240,9 @@ export function buildWeeklySalesActualAudit(prepared, month, addon, managerKpiRe
       };
       rows.push(weeklyAuditRow('NEW RETAILER ADDED', week.key, addon.actualByRow.newRetailers[week.key], auditRecord, {
         retailerVisit: item.contribution,
-      }, 'Unique dealer from NCOT Report; creator identity and date match a Check-In with Joint Working = YES, and the dealer creation timestamp is later than that Check-In.'));
+      }, item.matchReason.startsWith('Counted by management-confirmed November 2026 exception')
+        ? 'Management-confirmed November 2026 exception for Dealer ID RET-100739 or 76762; counted by NCOT Month and First Order Date.'
+        : 'Unique dealer from NCOT Report; creator identity and date match a Check-In with Joint Working = YES, and the dealer creation timestamp is later than that Check-In.'));
     }
   }
   return rows.sort((a, b) => String(a.Week).localeCompare(String(b.Week)) || String(a.KPI).localeCompare(String(b.KPI)) || (Number(a['Source Row']) || 0) - (Number(b['Source Row']) || 0));
@@ -284,24 +286,34 @@ function calculateNewRetailerActuals(prepared, month, ncotReport) {
   }
   const countedDealers = new Set();
   const statuses = {};
+  // Management confirmed these two November NCOT records as valid additions,
+  // even though the export does not prove the normal same-day/time criteria.
+  const novemberConfirmedDealerIds = new Set(['RET-100739', '76762']);
   for (const record of ncotReport.records) {
-    const bucket = getWeeklySalesPerformanceBucket(record.dateKey, month);
+    const confirmedNovemberDealer = month === '2026-11'
+      && record.reportMonthKey === '2026-11'
+      && novemberConfirmedDealerIds.has(String(record.dealerId || '').trim());
+    const bucket = getWeeklySalesPerformanceBucket(
+      confirmedNovemberDealer ? record.firstOrderDateKey : record.dateKey,
+      month,
+    );
     if (!bucket) continue;
     const identity = record.employeeId ? `ID:${normalize(record.employeeId)}` : record.employeeName ? `NAME:${normalize(record.employeeName)}` : '';
     const possibleMatches = identity ? checkInsByEmployeeDate.get(`${identity}|${record.dateKey}`) || [] : [];
     const matched = record.createdAt ? possibleMatches.filter(({ checkInAt }) => record.createdAt > checkInAt).sort((a, b) => b.checkInAt - a.checkInAt)[0] : null;
     const dealerKey = record.dealerKey ? `${bucket}|${record.dealerKey}` : '';
-    const duplicate = Boolean(matched && countedDealers.has(dealerKey));
-    const contribution = matched && dealerKey && !duplicate ? 1 : 0;
+    const duplicate = Boolean((matched || confirmedNovemberDealer) && countedDealers.has(dealerKey));
+    const contribution = (matched || confirmedNovemberDealer) && dealerKey && !duplicate ? 1 : 0;
     if (contribution) { countedDealers.add(dealerKey); weeks[bucket] += 1; }
-    const matchReason = contribution ? 'Counted: created after a same-day Joint Working = YES Check-In.'
+    const matchReason = contribution && confirmedNovemberDealer ? 'Counted by management-confirmed November 2026 exception for this Dealer ID; assigned to week by First Order Date.'
+      : contribution ? 'Counted: created after a same-day Joint Working = YES Check-In.'
       : duplicate ? 'Duplicate dealer ID/name in this weekly bucket; counted once.'
         : !record.createdAt ? 'Excluded: NCOT creation time is missing or invalid; date-only rows cannot prove creation was after Check-In.'
           : !identity ? 'Excluded: NCOT creator employee ID/name is missing.'
             : !record.dealerKey ? 'Excluded: dealer ID/name is missing.'
               : !possibleMatches.length ? 'Excluded: no same-employee, same-day Joint Working = YES Check-In with a valid Check-In time.'
                 : 'Excluded: dealer creation was not later than the matching Check-In.';
-    audit[bucket].push({ ncotSourceRow: record.sourceRow, ncotCreatedAt: record.createdAtLabel, dateKey: record.dateKey, employeeId: record.employeeId, employeeName: record.employeeName, dealerId: record.dealerId, dealerName: record.dealerName, matchedCheckIn: Boolean(matched), matchedCheckInSourceRow: matched?.row.sourceRow ?? '', matchedCheckInTime: matched?.row.checkInRaw ?? '', contribution, matchReason });
+    audit[bucket].push({ ncotSourceRow: record.sourceRow, ncotCreatedAt: record.createdAtLabel, dateKey: confirmedNovemberDealer ? record.firstOrderDateKey : record.dateKey, employeeId: record.employeeId, employeeName: record.employeeName, dealerId: record.dealerId, dealerName: record.dealerName, matchedCheckIn: Boolean(matched), matchedCheckInSourceRow: matched?.row.sourceRow ?? '', matchedCheckInTime: matched?.row.checkInRaw ?? '', contribution, matchReason });
   }
   for (const week of WEEKLY_SALES_PERFORMANCE_WEEKS) statuses[week.key] = hasCheckInMonth ? 'No qualifying NCOT dealer created after a same-day Joint Working = YES Check-In' : 'UPLOAD CHECK-IN REPORT';
   return { loaded: true, weeks: hasCheckInMonth ? weeks : Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])), audit, statuses };

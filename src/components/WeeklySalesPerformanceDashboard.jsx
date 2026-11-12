@@ -235,7 +235,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const detail = weeklyActualAuditRows.filter((row) => row.KPI === kpi.label);
     const summaryRows = [
       ['WEEKLY KPI ACTUAL REPORT'], ['Month', monthLabel(month)], ['KPI', kpi.label],
-      ['Source', kpi.key === 'retainedRetailers' || (kpi.key === 'newRetailers' && !addon.ncotActualsLoaded) ? 'Manually entered actuals saved in this browser.' : kpi.key === 'newRetailers' ? 'Currently loaded NCOT Report matched to same-day Joint Working = YES Check-Ins.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
+      ['Source', kpi.key === 'retainedRetailers' || (kpi.key === 'newRetailers' && !addon.ncotActualsLoaded) ? 'Manually entered actuals saved in this browser.' : kpi.key === 'newRetailers' ? 'Currently loaded NCOT Report; standard matches and any labeled management-confirmed exceptions.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
       ['MONTH TOTAL', getMonthTotal(kpi)],
@@ -249,7 +249,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const workbook = XLSX.utils.book_new();
     const summary = [
       ['WEEKLY KPI ACTUAL REPORT'], ['Month', monthLabel(month)], ['KPI', kpi.label],
-      ['Source', kpi.key === 'retainedRetailers' || (kpi.key === 'newRetailers' && !addon.ncotActualsLoaded) ? 'Manually entered actuals saved in this browser.' : kpi.key === 'newRetailers' ? 'Currently loaded NCOT Report matched to same-day Joint Working = YES Check-Ins.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
+      ['Source', kpi.key === 'retainedRetailers' || (kpi.key === 'newRetailers' && !addon.ncotActualsLoaded) ? 'Manually entered actuals saved in this browser.' : kpi.key === 'newRetailers' ? 'Currently loaded NCOT Report; standard matches and any labeled management-confirmed exceptions.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
       ['MONTH TOTAL', getMonthTotal(kpi)],
@@ -283,7 +283,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
         {secondaryOrderError && <p className="weekly-order-error" role="alert">{secondaryOrderError}</p>}
       </section>
       <section className="card weekly-order-upload" aria-label="NCOT Report upload">
-        <div><span className="eyebrow">NEW RETAILER SOURCE</span><h3>Upload NCOT Report</h3><p>Counts a unique dealer when its Employee Code or Assign User matches a same-day Check-In with Joint Working = YES, and its creation time is later. {ncotReport && ncotReport.stats.validCreationTimestamps === 0 ? 'This upload has dates only, so it cannot confirm after-Check-In order.' : 'Creation time is required to confirm that the dealer was added after Check-In.'} Clear the report to return to manual entries.</p></div>
+        <div><span className="eyebrow">NEW RETAILER SOURCE</span><h3>Upload NCOT Report</h3><p>Normally, a unique dealer counts when its Employee Code or Assign User matches a same-day Check-In with Joint Working = YES and its creation time is later. For November 2026, the confirmed Dealer IDs RET-100739 and 76762 count by NCOT Month and First Order Date; their audit rows identify this exception. {ncotReport && ncotReport.stats.validCreationTimestamps === 0 ? 'This upload has dates only, so other rows cannot confirm after-Check-In order.' : 'Creation time is required for other rows.'} Clear the report to return to manual entries.</p></div>
         <label className={`weekly-order-upload-button${ncotLoading ? ' is-loading' : ''}`}>{ncotLoading ? (ncotProgress || 'Reading…') : ncotReport ? 'Replace NCOT report' : 'Choose NCOT report'}<input aria-label="Upload NCOT Report" type="file" accept=".xlsx,.xls,.csv" disabled={ncotLoading} onChange={(event) => { uploadNcotReport(event.target.files?.[0]); event.target.value = ''; }}/></label>
         {ncotFileName && <div className="weekly-order-file"><b>{ncotFileName}</b><span>{ncotReport?.stats?.rows?.toLocaleString()} rows · {ncotReport?.stats?.validCreationTimestamps?.toLocaleString()} with creation time · {Object.values(addon.actualByRow.newRetailers).reduce((sum, value) => sum + (Number(value) || 0), 0).toLocaleString()} qualifying dealers this month</span><button className="secondary" type="button" onClick={() => { setNcotReport(null); setNcotFileName(''); setNcotError(''); }}>Clear NCOT report</button></div>}
         {ncotError && <p className="weekly-order-error" role="alert">{ncotError}</p>}
