@@ -145,7 +145,7 @@ function evaluateQ1Eligibility(row) {
   };
 }
 
-export function calculateQ1Q3Reports(prepared, month) {
+export function calculateQ1Q3Reports(prepared, month, managerTerritoryResult = null) {
   const buckets = getKpiBuckets(month);
   const [year, monthNumber] = month.split('-').map(Number);
   const daysInMonth = new Date(year, monthNumber, 0).getDate();
@@ -347,7 +347,7 @@ export function calculateQ1Q3Reports(prepared, month) {
       dates: [...dates].sort().join(', '),
     })).sort((a, b) => a.manager.localeCompare(b.manager) || a.empId.localeCompare(b.empId)),
   ]));
-  const q1Values = Object.fromEntries(buckets.map(({ key }) => [key,
+  let q1Values = Object.fromEntries(buckets.map(({ key }) => [key,
     q1ManagerSummariesByBucket[key].reduce((total, manager) => total + manager.visitDays, 0),
   ]));
   const q1WeeklyDiagnostics = Object.fromEntries(buckets.filter(({ key }) => key.startsWith('week')).map((bucket) => {
@@ -439,7 +439,7 @@ export function calculateQ1Q3Reports(prepared, month) {
   q1ManagerSummariesByBucket.secondHalf = combineManagerWeeks(['week3', 'week4']);
   q1BySeniorByBucket.firstHalf = [...q1BySeniorByBucket.week1, ...q1BySeniorByBucket.week2];
   q1BySeniorByBucket.secondHalf = [...q1BySeniorByBucket.week3, ...q1BySeniorByBucket.week4];
-  const q1UniqueManagerDateCount = q1ManagerSummariesByBucket.firstHalf.reduce((sum, manager) => sum + manager.visitDays, 0)
+  let q1UniqueManagerDateCount = q1ManagerSummariesByBucket.firstHalf.reduce((sum, manager) => sum + manager.visitDays, 0)
     + q1ManagerSummariesByBucket.secondHalf.reduce((sum, manager) => sum + manager.visitDays, 0);
   const q3UniqueByBucket = Object.fromEntries(buckets.map(({ key }) => [key,
     [...q3AuditByBucket[key]].map(([distributor, data]) => ({ distributor, ...data })).sort((a, b) => a.distributor.localeCompare(b.distributor)),
@@ -485,6 +485,96 @@ export function calculateQ1Q3Reports(prepared, month) {
     if (row.jointWorking === 'YES' && !row.seniorName) dataQualityAudit.push({ ...base, issue: 'Joint Working is YES but Joint Working Name is blank' });
     if (row.jointWorking === 'YES' && !row.jointWorkingDesignation) dataQualityAudit.push({ ...base, issue: 'Joint Working is YES but Joint Working Designation is blank' });
     if (REPORT_Q3_SENIORS.has(row.designation) && row.type === 'CHANNEL PARTNER' && !row.distributor) dataQualityAudit.push({ ...base, issue: 'Q3 role/type qualifies but all distributor identifier fields are blank' });
+  }
+  // Management Q1 must reconcile to the exact qualifying Manager + Territory
+  // Q.2 source used by Weekly Sales Performance. Count each employee/date pair
+  // once per week, using the same ID-first, normalized-name fallback identity.
+  if (managerTerritoryResult?.details?.q2SourceRowsByBucket) {
+    const q1BySenior = {};
+    const q1Managers = {};
+    const q1Diagnostics = {};
+    const q1ValuesAligned = {};
+    const qualifyingBySourceRow = new Map();
+    for (const bucket of buckets.filter(({ key }) => key.startsWith('week'))) {
+      const sourceRows = managerTerritoryResult.details.q2SourceRowsByBucket[bucket.key] || [];
+      const pairs = new Map();
+      const managerGroups = new Map();
+      let rowsWithIdentityAndDate = 0;
+      for (const row of sourceRows) {
+        const identity = row.empId ? `ID:${normalize(row.empId)}` : `NAME:${normalize(row.employee)}`;
+        if (!identity.slice(identity.indexOf(':') + 1) || !row.date) continue;
+        rowsWithIdentityAndDate += 1;
+        const pairKey = `${identity}\u0000${row.date}`;
+        const existing = pairs.get(pairKey);
+        if (!existing) pairs.set(pairKey, { ...row, managerKey: identity, date: row.date, rawRows: 1, sourceRows: [row.sourceRow] });
+        else { existing.rawRows += 1; existing.sourceRows.push(row.sourceRow); }
+        qualifyingBySourceRow.set(row.sourceRow, { bucket, pairKey, uniqueContribution: !existing });
+        const manager = managerGroups.get(identity) || { managerKey: identity, manager: row.employee || '(blank)', empId: row.empId || '', dates: new Set(), qualifyingRows: 0, types: new Set() };
+        manager.dates.add(row.date);
+        manager.qualifyingRows += 1;
+        if (row.type) manager.types.add(row.type);
+        managerGroups.set(identity, manager);
+      }
+      const dayRows = [...pairs.values()].map(({ managerKey, employee, empId, date, rawRows, sourceRows: contributingRows }) => ({ managerKey, employee, empId, date, rawRows, sourceRows: contributingRows, count: 1 }));
+      q1BySenior[bucket.key] = dayRows;
+      q1Managers[bucket.key] = [...managerGroups.values()].map((manager) => ({
+        ...manager, visitDays: manager.dates.size, dates: [...manager.dates].sort().join(', '), types: [...manager.types].sort().join(', '),
+      })).sort((a, b) => a.manager.localeCompare(b.manager) || a.empId.localeCompare(b.empId));
+      q1ValuesAligned[bucket.key] = pairs.size;
+      q1Diagnostics[bucket.key] = {
+        bucket: bucket.label, rowsInBucket: sourceRows.length, qualifyingSourceRows: rowsWithIdentityAndDate,
+        rowsWithoutIdentityOrDate: sourceRows.length - rowsWithIdentityAndDate,
+        duplicateSourceRowsRemoved: rowsWithIdentityAndDate - pairs.size, finalUniqueManagerDays: pairs.size,
+        exclusionReasons: {},
+      };
+    }
+    q1ValuesAligned.firstHalf = q1ValuesAligned.week1 + q1ValuesAligned.week2;
+    q1ValuesAligned.secondHalf = q1ValuesAligned.week3 + q1ValuesAligned.week4;
+    const alignedAudit = q1SourceRows.map((row) => {
+      const match = qualifyingBySourceRow.get(row.sourceRow);
+      return {
+        ...row,
+        eligible: Boolean(match),
+        uniqueContribution: Boolean(match?.uniqueContribution),
+        reason: match
+          ? (match.uniqueContribution ? 'Counted once: qualifying Manager + Territory Q.2 employee/date pair' : 'Duplicate qualifying Q.2 row; employee/date pair already counted')
+          : 'Not included in the qualifying Manager + Territory Q.2 source rows',
+      };
+    });
+    for (const row of alignedAudit.filter((item) => !item.eligible)) {
+      const weekKey = buckets.find((bucket) => bucket.label === row.bucket)?.key;
+      if (weekKey && q1Diagnostics[weekKey]) {
+        const reason = row.reason;
+        q1Diagnostics[weekKey].exclusionReasons[reason] = (q1Diagnostics[weekKey].exclusionReasons[reason] || 0) + 1;
+      }
+    }
+    const allUniqueDays = Object.values(q1BySenior).flat();
+    const allManagers = Object.fromEntries(Object.entries(q1Managers).map(([key, rows]) => [key, rows]));
+    q1BySenior.firstHalf = [...q1BySenior.week1, ...q1BySenior.week2];
+    q1BySenior.secondHalf = [...q1BySenior.week3, ...q1BySenior.week4];
+    const combineAlignedWeeks = (keys) => {
+      const groups = new Map();
+      for (const key of keys) for (const manager of q1Managers[key]) {
+        const group = groups.get(manager.managerKey) || { managerKey: manager.managerKey, manager: manager.manager, empId: manager.empId, dates: new Set(), qualifyingRows: 0, types: new Set() };
+        manager.dates.split(', ').filter(Boolean).forEach((date) => group.dates.add(date));
+        manager.types.split(', ').filter(Boolean).forEach((type) => group.types.add(type));
+        group.qualifyingRows += manager.qualifyingRows;
+        groups.set(manager.managerKey, group);
+      }
+      return [...groups.values()].map((manager) => ({ ...manager, visitDays: manager.dates.size, dates: [...manager.dates].sort().join(', '), types: [...manager.types].sort().join(', ') }));
+    };
+    q1Managers.firstHalf = combineAlignedWeeks(['week1', 'week2']);
+    q1Managers.secondHalf = combineAlignedWeeks(['week3', 'week4']);
+    q1Values = q1ValuesAligned;
+    q1QualifyingRows = qualifyingBySourceRow.size;
+    q1SourceRows.splice(0, q1SourceRows.length, ...alignedAudit);
+    for (const key of Object.keys(q1WeeklyDiagnostics)) delete q1WeeklyDiagnostics[key];
+    Object.assign(q1WeeklyDiagnostics, q1Diagnostics);
+    for (const key of Object.keys(q1BySeniorByBucket)) delete q1BySeniorByBucket[key];
+    Object.assign(q1BySeniorByBucket, q1BySenior);
+    for (const key of Object.keys(q1ManagerSummariesByBucket)) delete q1ManagerSummariesByBucket[key];
+    Object.assign(q1ManagerSummariesByBucket, allManagers, { firstHalf: q1Managers.firstHalf, secondHalf: q1Managers.secondHalf });
+    q1UniqueManagerDateCount = allUniqueDays.length;
   }
   return {
     month,

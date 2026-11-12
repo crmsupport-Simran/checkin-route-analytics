@@ -198,6 +198,9 @@ export function calculateJointWorkingKpis(prepared, month, { includeTerritory = 
     const isQualifyingJointWork = isManagerByDesignation && row.jointWorking === 'YES' && isBdoByJointDesignation && hasJointPartnerName;
     const isQualifyingQ2JointWork = isManagerByDesignation && row.jointWorking === 'YES' && isQ2BdoByJointDesignation && hasJointPartnerName;
     const q2Type = row.type === 'DEALER' || row.type === 'OTHER';
+    const isQualifyingQ1 = includeTerritory
+      ? isQualifyingQ2JointWork && q2Type
+      : isQualifyingJointWork;
     if (row.jointWorking === 'YES' && isManagerByDesignation && hasJointPartnerName) {
       q1SeniorNameDays.add(`${row.managerIdentityKey}\u0000${row.dateKey}`);
       if (!isBdoByJointDesignation) q1JuniorDesignationExcludedRows.push({ date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', senior: row.seniorLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', type: row.typeLabel || '(blank)', reason: 'Joint Working Designation is not an approved Executive/BDO designation' });
@@ -223,7 +226,7 @@ export function calculateJointWorkingKpis(prepared, month, { includeTerritory = 
       increment(q2ExclusionReasons, reason);
       excludedQ2Rows.push({ date: row.dateLabel, employee: row.salesUserName, empId: row.empId, designation: row.designationLabel || '(blank)', jointWorkingDesignation: row.jointWorkingDesignationLabel || '(blank)', designationSalesType: row.designationSalesTypeLabel || '(blank)', type: row.typeLabel || '(blank)', jointWorking: row.jointWorkingLabel || '(blank)', senior: row.seniorLabel || '(blank)', company: row.companyName || row.dealerChannelPartner || '(blank)', reason });
     }
-    if (isQualifyingJointWork) {
+    if (isQualifyingQ1) {
       q1QualifyingRows += 1;
       for (const bucket of matchingBuckets) {
         const visitKey = `${row.managerIdentityKey}\u0000${row.dateKey}`;
