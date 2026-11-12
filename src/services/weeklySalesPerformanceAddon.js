@@ -8,7 +8,7 @@ export const WEEKLY_SALES_PERFORMANCE_ROWS = Object.freeze([
   { key: 'orderAmount', label: 'TOTAL ORDER AMOUNT', plan: 9900000, actualSource: 'Secondary Order Report · matched Visit Order · Basic Order Value' },
   { key: 'averageOrderValue', label: 'AVERAGE ORDER VALUE', plan: 10000, actualSource: 'Calculated · Total Order Amount ÷ No. of Orders Received' },
   { key: 'retainedRetailers', label: 'OLD RETAILER RETAINED', plan: 55, actualSource: 'Manual actual' },
-  { key: 'newRetailers', label: 'NEW RETAILER ADDED', plan: 55, actualSource: 'Manual actual' },
+  { key: 'newRetailers', label: 'NEW RETAILER ADDED', plan: 55, actualSource: 'NCOT Report · unique dealer created after same-day Check-In · Joint Working = YES; manual fallback' },
 ]);
 
 export const WEEKLY_SALES_PERFORMANCE_STORAGE_KEY = 'weekly-sales-performance-manual-actuals-v1';
@@ -109,6 +109,7 @@ export const WEEKLY_ACTUAL_AUDIT_COLUMNS = Object.freeze([
   'Joint Working', 'Joint Working Name', 'Joint Working Designation', 'Type', 'Type ID', 'Designation Sales Type',
   'Secondary Order Count', 'Basic Order Value', 'Secondary Order Source Row', 'Check-In Source Row', 'Order ID', 'Order Type', 'Order Status', 'Dealer ID', 'Employee Contribution', 'Employee-Date Contribution',
   'Retailer Visit Contribution', 'Unique Order Retailer Contribution', 'Order Amount Contribution', 'Source Rule',
+  'NCOT Source Row', 'NCOT Created At', 'New Dealer ID', 'New Dealer Name', 'Matched Check-In Source Row', 'Matched Check-In Time', 'Match / Exclusion Reason',
 ]);
 
 const weeklyAuditRow = (kpi, weekKey, actual, row, measures, rule) => ({
@@ -141,6 +142,13 @@ const weeklyAuditRow = (kpi, weekKey, actual, row, measures, rule) => ({
   'Unique Order Retailer Contribution': measures.orderRetailer ?? '',
   'Order Amount Contribution': measures.orderAmount ?? '',
   'Source Rule': rule,
+  'NCOT Source Row': row?.ncotSourceRow ?? '',
+  'NCOT Created At': row?.ncotCreatedAt ?? '',
+  'New Dealer ID': row?.dealerId || '',
+  'New Dealer Name': row?.dealerName || '',
+  'Matched Check-In Source Row': row?.matchedCheckInSourceRow ?? '',
+  'Matched Check-In Time': row?.matchedCheckInTime ?? '',
+  'Match / Exclusion Reason': row?.matchReason || '',
 });
 
 /** Raw Check-In rows and row-level contributions for every calculated weekly actual. */
@@ -212,7 +220,7 @@ export function buildWeeklySalesActualAudit(prepared, month, addon, managerKpiRe
     }
   }
 
-  for (const row of addon.rows.filter(({ key }) => ['retainedRetailers', 'newRetailers'].includes(key))) {
+  for (const row of addon.rows.filter(({ key }) => key === 'retainedRetailers' || (key === 'newRetailers' && !addon.ncotActualsLoaded))) {
     for (const week of addon.weeks) {
       const value = manualActuals[row.key]?.[week.key];
       const manualValue = value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
@@ -220,10 +228,86 @@ export function buildWeeklySalesActualAudit(prepared, month, addon, managerKpiRe
         'Manual weekly actual entered by the user and saved in this browser; there are no Check-In source rows for this value.'));
     }
   }
+  for (const week of addon.weeks) {
+    for (const item of addon.newRetailerAuditRowsByWeek?.[week.key] || []) {
+      const auditRecord = {
+        sourceRow: item.ncotSourceRow, dateKey: item.dateKey, dateLabel: item.dateKey,
+        salesUserName: item.employeeName, empId: item.employeeId,
+        jointWorking: item.matchedCheckIn ? 'YES' : '', dealerId: item.dealerId, dealerName: item.dealerName,
+        ncotSourceRow: item.ncotSourceRow, ncotCreatedAt: item.ncotCreatedAt,
+        matchedCheckInSourceRow: item.matchedCheckInSourceRow, matchedCheckInTime: item.matchedCheckInTime,
+        matchReason: item.matchReason,
+      };
+      rows.push(weeklyAuditRow('NEW RETAILER ADDED', week.key, addon.actualByRow.newRetailers[week.key], auditRecord, {
+        retailerVisit: item.contribution,
+      }, 'Unique dealer from NCOT Report; creator identity and date match a Check-In with Joint Working = YES, and the dealer creation timestamp is later than that Check-In.'));
+    }
+  }
   return rows.sort((a, b) => String(a.Week).localeCompare(String(b.Week)) || String(a.KPI).localeCompare(String(b.KPI)) || (Number(a['Source Row']) || 0) - (Number(b['Source Row']) || 0));
 }
 
-export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null) {
+function parseCheckInTime(value, dateKey) {
+  if (value instanceof Date && !Number.isNaN(value.getTime()) && dateKey) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Date(year, month - 1, day, value.getHours(), value.getMinutes(), value.getSeconds());
+  }
+  if (typeof value === 'number' && value >= 0 && value < 1 && dateKey) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const seconds = Math.round(value * 24 * 60 * 60);
+    return new Date(year, month - 1, day, Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60);
+  }
+  const raw = String(value ?? '').trim();
+  const time = raw.match(/(?:^|[ T])([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?\s*(AM|PM)?/i);
+  if (!time || !dateKey) return null;
+  const [year, month, day] = dateKey.split('-').map(Number);
+  let hours = Number(time[1]);
+  if (time[4]?.toUpperCase() === 'PM' && hours < 12) hours += 12;
+  if (time[4]?.toUpperCase() === 'AM' && hours === 12) hours = 0;
+  return new Date(year, month - 1, day, hours, Number(time[2]), Number(time[3] || 0));
+}
+
+function calculateNewRetailerActuals(prepared, month, ncotReport) {
+  const weeks = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, 0]));
+  const audit = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, []]));
+  if (!Array.isArray(ncotReport?.records)) return { loaded: false, weeks, audit, statuses: {} };
+  const hasCheckInMonth = Boolean(prepared.rowsByMonth?.has(month));
+  const checkInsByEmployeeDate = new Map();
+  for (const row of prepared.rowsByMonth?.get(month) || []) {
+    if (row.jointWorking !== 'YES' || !row.dateKey) continue;
+    const identity = row.empId ? `ID:${normalize(row.empId)}` : row.salesUserKey ? `NAME:${normalize(row.salesUserKey)}` : '';
+    const checkInAt = parseCheckInTime(row.checkInRaw, row.dateKey);
+    if (!identity || !checkInAt) continue;
+    const key = `${identity}|${row.dateKey}`;
+    const matches = checkInsByEmployeeDate.get(key) || [];
+    matches.push({ row, checkInAt });
+    checkInsByEmployeeDate.set(key, matches);
+  }
+  const countedDealers = new Set();
+  const statuses = {};
+  for (const record of ncotReport.records) {
+    const bucket = getWeeklySalesPerformanceBucket(record.dateKey, month);
+    if (!bucket) continue;
+    const identity = record.employeeId ? `ID:${normalize(record.employeeId)}` : record.employeeName ? `NAME:${normalize(record.employeeName)}` : '';
+    const possibleMatches = identity ? checkInsByEmployeeDate.get(`${identity}|${record.dateKey}`) || [] : [];
+    const matched = record.createdAt ? possibleMatches.filter(({ checkInAt }) => record.createdAt > checkInAt).sort((a, b) => b.checkInAt - a.checkInAt)[0] : null;
+    const dealerKey = record.dealerKey ? `${bucket}|${record.dealerKey}` : '';
+    const duplicate = Boolean(matched && countedDealers.has(dealerKey));
+    const contribution = matched && dealerKey && !duplicate ? 1 : 0;
+    if (contribution) { countedDealers.add(dealerKey); weeks[bucket] += 1; }
+    const matchReason = contribution ? 'Counted: created after a same-day Joint Working = YES Check-In.'
+      : duplicate ? 'Duplicate dealer ID/name in this weekly bucket; counted once.'
+        : !record.createdAt ? 'Excluded: NCOT creation time is missing or invalid; date-only rows cannot prove creation was after Check-In.'
+          : !identity ? 'Excluded: NCOT creator employee ID/name is missing.'
+            : !record.dealerKey ? 'Excluded: dealer ID/name is missing.'
+              : !possibleMatches.length ? 'Excluded: no same-employee, same-day Joint Working = YES Check-In with a valid Check-In time.'
+                : 'Excluded: dealer creation was not later than the matching Check-In.';
+    audit[bucket].push({ ncotSourceRow: record.sourceRow, ncotCreatedAt: record.createdAtLabel, dateKey: record.dateKey, employeeId: record.employeeId, employeeName: record.employeeName, dealerId: record.dealerId, dealerName: record.dealerName, matchedCheckIn: Boolean(matched), matchedCheckInSourceRow: matched?.row.sourceRow ?? '', matchedCheckInTime: matched?.row.checkInRaw ?? '', contribution, matchReason });
+  }
+  for (const week of WEEKLY_SALES_PERFORMANCE_WEEKS) statuses[week.key] = hasCheckInMonth ? 'No qualifying NCOT dealer created after a same-day Joint Working = YES Check-In' : 'UPLOAD CHECK-IN REPORT';
+  return { loaded: true, weeks: hasCheckInMonth ? weeks : Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])), audit, statuses };
+}
+
+export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result, secondaryOrders = null, managerKpiResult = null, ncotReport = null) {
   const ssp = newWeekSets();
   const jointDays = newWeekSets();
   const ordersByWeek = newWeekSets();
@@ -277,6 +361,7 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
   const orderAmount = Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key,
     !hasSecondaryOrderReport ? null : missingOrderAmountsByWeek[key].size ? null : roundUpToWhole(basicAmountByWeek[key]),
   ]));
+  const newRetailers = calculateNewRetailerActuals(prepared, month, ncotReport);
   const actualByRow = {
     ssp: Object.fromEntries(Object.keys(ssp).map((key) => [key, ssp[key].size])),
     jointDays: Object.fromEntries(Object.keys(jointDays).map((key) => [key, jointDays[key].size])),
@@ -285,13 +370,14 @@ export function calculateWeeklySalesPerformanceAddon(prepared, month, q1Q3Result
     orderAmount,
     averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, !hasSecondaryOrderReport || orderAmount[key] === null || ordersByWeek[key].size === 0 ? null : roundUpToWhole(basicAmountByWeek[key] / ordersByWeek[key].size)])),
     retainedRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
-    newRetailers: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, null])),
+    newRetailers: newRetailers.weeks,
   };
-  return { month, weeks: WEEKLY_SALES_PERFORMANCE_WEEKS, rows: WEEKLY_SALES_PERFORMANCE_ROWS, actualByRow, q2SourceRowsByBucket, matchedSecondaryOrdersByWeek,
+  return { month, weeks: WEEKLY_SALES_PERFORMANCE_WEEKS, rows: WEEKLY_SALES_PERFORMANCE_ROWS, actualByRow, q2SourceRowsByBucket, matchedSecondaryOrdersByWeek, ncotActualsLoaded: newRetailers.loaded, newRetailerAuditRowsByWeek: newRetailers.audit,
     statuses: {
       orders: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, hasSecondaryOrderReport ? 'No qualifying matched Visit Orders' : 'UPLOAD SECONDARY ORDER REPORT'])),
       orderAmount: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, !hasSecondaryOrderReport ? 'UPLOAD SECONDARY ORDER REPORT' : missingOrderAmountsByWeek[key].size ? 'MISSING BASIC ORDER VALUE' : 'No qualifying matched Visit Orders'])),
       averageOrderValue: Object.fromEntries(WEEKLY_SALES_PERFORMANCE_WEEKS.map(({ key }) => [key, !hasSecondaryOrderReport ? 'UPLOAD SECONDARY ORDER REPORT' : missingOrderAmountsByWeek[key].size ? 'MISSING BASIC ORDER VALUE' : 'PENDING'])),
+      newRetailers: newRetailers.statuses,
     },
   };
 }
@@ -336,7 +422,8 @@ export function displayManualActual(value) {
 
 export function getWeeklySalesMonthTotal(addon, row, manualActualsForMonth = {}, monthHasData = true) {
   if (!addon || !row) return 'PENDING';
-  const manual = row.key === 'retainedRetailers' || row.key === 'newRetailers';
+  if (row.key === 'newRetailers' && addon.ncotActualsLoaded && !monthHasData) return 'UPLOAD CHECK-IN REPORT';
+  const manual = row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded);
   if (manual) {
     const values = addon.weeks.map((week) => manualActualsForMonth[row.key]?.[week.key]);
     if (values.some((value) => value !== '' && value !== null && value !== undefined && !isValidManualActual(value))) return 'INVALID VALUE';
@@ -361,7 +448,8 @@ export function getWeeklySalesMonthTotal(addon, row, manualActualsForMonth = {},
 export function buildWeeklySalesPerformanceExportRows(addon, manualActualsForMonth = {}, planOverridesForMonth = {}, monthHasData = true) {
   if (!addon) return [];
   const actualFor = (row, weekKey) => {
-    if (row.key === 'retainedRetailers' || row.key === 'newRetailers') return displayManualActual(manualActualsForMonth[row.key]?.[weekKey]);
+    if (row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded)) return displayManualActual(manualActualsForMonth[row.key]?.[weekKey]);
+    if (row.key === 'newRetailers') return addon.actualByRow.newRetailers[weekKey] ?? addon.statuses.newRetailers?.[weekKey] ?? 'PENDING';
     if (row.key === 'orders' || row.key === 'orderAmount') return addon.actualByRow[row.key][weekKey] ?? addon.statuses[row.key][weekKey];
     if (row.key === 'averageOrderValue') return addon.actualByRow.averageOrderValue[weekKey] ?? addon.statuses.averageOrderValue?.[weekKey] ?? 'PENDING';
     return addon.actualByRow[row.key][weekKey];

@@ -121,6 +121,7 @@ export function prepareQ1Q3ReportRows(records = []) {
       dealerChannelPartnerCode: String(record.dealerChannelPartnerCode ?? '').trim(),
       mobile: String(record.mobile ?? '').trim(),
       checkIn: String(record.checkIn ?? '').trim(),
+      checkInRaw: record.checkInRaw ?? '',
     };
     rows.push(preparedRow);
     if (!rowsByMonth.has(month)) rowsByMonth.set(month, []);

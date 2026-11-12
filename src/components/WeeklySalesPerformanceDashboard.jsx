@@ -48,6 +48,11 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const [secondaryOrderLoading, setSecondaryOrderLoading] = useState(false);
   const [secondaryOrderProgress, setSecondaryOrderProgress] = useState('');
   const [secondaryOrderError, setSecondaryOrderError] = useState('');
+  const [ncotReport, setNcotReport] = useState(null);
+  const [ncotFileName, setNcotFileName] = useState('');
+  const [ncotLoading, setNcotLoading] = useState(false);
+  const [ncotProgress, setNcotProgress] = useState('');
+  const [ncotError, setNcotError] = useState('');
   useEffect(() => setMonthOverride(''), [report]);
   useEffect(() => {
     try { localStorage.setItem(WEEKLY_SALES_PERFORMANCE_STORAGE_KEY, JSON.stringify(manualActuals)); } catch { /* Browser storage can be disabled. */ }
@@ -59,7 +64,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const hasMonthData = Boolean(prepared.rowsByMonth?.has(month));
   const existingResult = useMemo(() => report && month ? calculateQ1Q3Reports(prepared, month) : null, [report, prepared, month]);
   const territoryKpiResult = useMemo(() => report && month ? calculateJointWorkingKpis(managerKpiPrepared, month, { includeTerritory: true }) : null, [report, managerKpiPrepared, month]);
-  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders, territoryKpiResult) : null, [prepared, month, existingResult, secondaryOrders, territoryKpiResult]);
+  const addon = useMemo(() => month ? calculateWeeklySalesPerformanceAddon(prepared, month, existingResult, secondaryOrders, territoryKpiResult, ncotReport) : null, [prepared, month, existingResult, secondaryOrders, territoryKpiResult, ncotReport]);
   const monthManualActuals = manualActuals[month] || {};
   const monthPlans = planOverrides[month] || {};
   const exportRows = useMemo(() => buildWeeklySalesPerformanceExportRows(addon, monthManualActuals, monthPlans, hasMonthData), [addon, monthManualActuals, monthPlans, hasMonthData]);
@@ -94,9 +99,20 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
       setSecondaryOrderProgress('');
     }
   };
+  const uploadNcotReport = async (file) => {
+    if (!file) return;
+    setNcotLoading(true); setNcotProgress('Reading NCOT report…'); setNcotError('');
+    try {
+      const parsed = await parseSupplemental(file, 'ncot', (progress) => setNcotProgress(progress.stage || 'Reading NCOT report…'));
+      setNcotReport(parsed); setNcotFileName(file.name);
+    } catch (error) {
+      setNcotReport(null); setNcotFileName(''); setNcotError(error.message || 'Could not read this NCOT report.');
+    } finally { setNcotLoading(false); setNcotProgress(''); }
+  };
   const getActual = (row, week) => {
-    if (['retainedRetailers', 'newRetailers'].includes(row.key)) return monthManualActuals[row.key]?.[week.key] ?? 'PENDING';
+    if (row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded)) return monthManualActuals[row.key]?.[week.key] ?? 'PENDING';
     if (!report && ['ssp', 'jointDays', 'retailersVisited', 'orders', 'orderAmount', 'averageOrderValue'].includes(row.key)) return 'UPLOAD CHECK-IN REPORT';
+    if (row.key === 'newRetailers' && addon.ncotActualsLoaded && !hasMonthData) return 'UPLOAD CHECK-IN REPORT';
     if (!hasMonthData) return 'PENDING';
     const value = addon.actualByRow[row.key]?.[week.key];
     if (value !== null && value !== undefined) return Number(value).toLocaleString('en-IN');
@@ -154,7 +170,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
   const exportWeeklyActualsCsv = () => downloadCsv([
     WEEKLY_ACTUAL_AUDIT_COLUMNS,
     ...addon.rows.flatMap((row) => addon.weeks.map((week) => {
-      const manual = ['retainedRetailers', 'newRetailers'].includes(row.key);
+      const manual = row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded);
       const value = manual ? monthManualActuals[row.key]?.[week.key] : addon.actualByRow[row.key]?.[week.key];
       const summary = { 'Record Type': 'WEEKLY SUMMARY', KPI: row.label, Week: week.label,
         'Reported Weekly Actual': manual ? (value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE') : value ?? 'PENDING',
@@ -173,11 +189,11 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const summary = [
       ['WEEKLY SALES PERFORMANCE · ACTUALS DETAIL'],
       ['Month', monthLabel(month)],
-      ['Source', 'Currently loaded Check-In report, uploaded Secondary Order Report, and browser-saved manual actuals. No plan values are included.'],
+      ['Source', 'Currently loaded Check-In report, uploaded Secondary Order Report and NCOT Report (when provided), plus browser-saved manual actuals for Old Retailer Retained and fallback New Retailer Added. No plan values are included.'],
       [],
       ['KPI', ...addon.weeks.map((week) => week.label), 'MONTH TOTAL'],
       ...addon.rows.map((row) => [row.label, ...addon.weeks.map((week) => {
-        if (['retainedRetailers', 'newRetailers'].includes(row.key)) {
+        if (row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded)) {
           const value = monthManualActuals[row.key]?.[week.key];
           return value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
         }
@@ -204,11 +220,11 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     addDetailSheet('Order Amount', 'TOTAL ORDER AMOUNT');
     addDetailSheet('Average Order Value', 'AVERAGE ORDER VALUE');
     addDetailSheet('Old Retailer Manual', 'OLD RETAILER RETAINED');
-    addDetailSheet('New Retailer Manual', 'NEW RETAILER ADDED');
+    addDetailSheet(addon.ncotActualsLoaded ? 'New Retailer NCOT' : 'New Retailer Manual', 'NEW RETAILER ADDED');
     XLSX.writeFile(workbook, `weekly-sales-actuals-source-detail-${month}.xlsx`);
   };
   const getKpiActual = (row, week) => {
-    if (['retainedRetailers', 'newRetailers'].includes(row.key)) {
+    if (row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded)) {
       const value = monthManualActuals[row.key]?.[week.key];
       return value === '' || value === undefined || value === null ? 'PENDING' : isValidManualActual(value) ? Number(value) : 'INVALID VALUE';
     }
@@ -219,7 +235,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const detail = weeklyActualAuditRows.filter((row) => row.KPI === kpi.label);
     const summaryRows = [
       ['WEEKLY KPI ACTUAL REPORT'], ['Month', monthLabel(month)], ['KPI', kpi.label],
-      ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
+      ['Source', kpi.key === 'retainedRetailers' || (kpi.key === 'newRetailers' && !addon.ncotActualsLoaded) ? 'Manually entered actuals saved in this browser.' : kpi.key === 'newRetailers' ? 'Currently loaded NCOT Report matched to same-day Joint Working = YES Check-Ins.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
       ['MONTH TOTAL', getMonthTotal(kpi)],
@@ -233,7 +249,7 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     const workbook = XLSX.utils.book_new();
     const summary = [
       ['WEEKLY KPI ACTUAL REPORT'], ['Month', monthLabel(month)], ['KPI', kpi.label],
-      ['Source', ['retainedRetailers', 'newRetailers'].includes(kpi.key) ? 'Manually entered actuals saved in this browser.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
+      ['Source', kpi.key === 'retainedRetailers' || (kpi.key === 'newRetailers' && !addon.ncotActualsLoaded) ? 'Manually entered actuals saved in this browser.' : kpi.key === 'newRetailers' ? 'Currently loaded NCOT Report matched to same-day Joint Working = YES Check-Ins.' : ['orders', 'orderAmount', 'averageOrderValue'].includes(kpi.key) ? 'Currently loaded Check-In report and uploaded Secondary Order Report.' : 'Currently loaded Check-In report.'],
       [], ['Week', 'Reported Actual'],
       ...addon.weeks.map((week) => [week.label, getKpiActual(kpi, week)]),
       ['MONTH TOTAL', getMonthTotal(kpi)],
@@ -257,22 +273,30 @@ export default function WeeklySalesPerformanceDashboard({ report }) {
     </section>
     {!month && <section className="card q3-empty"><h3>Select a month</h3><p>Upload a Check-In report to populate actuals.</p></section>}
     {addon && <section className="card q3-bucket-card weekly-sales-addon">
-      <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? `Editing ${monthLabel(month)}; saving changes only this month’s plan.` : `Plans are saved separately for each month in this browser. ${hasMonthData ? 'Actuals use this month’s Check-In data.' : 'No Check-In rows for this month yet; actuals remain pending.'} Q.4 and Q.5 use the uploaded Secondary Order Report. Old/new retailer actuals are manual.`}</small></div></div>
+      <div className="q3-section-title"><div><span className="eyebrow">PLAN VS ACTUAL</span><h3>{monthLabel(month)} · weekly sales report</h3></div><div className="weekly-plan-actions">{editingPlans ? <><button className="primary compact" onClick={savePlanEdit} disabled={!addon.rows.every((row) => addon.weeks.every((week) => isValidPlanValue(planDraft[row.key]?.[week.key])))}>Save plans</button><button className="secondary" onClick={() => setEditingPlans(false)}>Cancel</button></> : <button className="secondary weekly-plan-edit" onClick={beginPlanEdit} aria-label="Edit weekly plans" title="Edit weekly plans">✎ Edit Plans</button>}<small>{editingPlans ? `Editing ${monthLabel(month)}; saving changes only this month’s plan.` : `Plans are saved separately for each month in this browser. ${hasMonthData ? 'Actuals use this month’s Check-In data.' : 'No Check-In rows for this month yet; actuals remain pending.'} Q.4 and Q.5 use the uploaded Secondary Order Report. Old Retailer Retained remains manual; New Retailer Added uses NCOT when uploaded.`}</small></div></div>
       <p className="q3-scope-note">Weekly buckets: 1–7, 8–15, 16–23, and 24–month end. Existing Q1–Q3 and Manager-only KPI rules are not changed.</p>
+      <div className="weekly-source-upload-grid">
       <section className="card weekly-order-upload" aria-label="Secondary Order Report upload">
         <div><span className="eyebrow">SECONDARY ORDER SOURCE</span><h3>Upload Secondary Order Report</h3><p>Q.4 and Q.5 use same-day Visit Orders with status Approved or Pending, matched to the Check-In employee and date. Counts use unique Order IDs; sales use Basic Order Value.</p></div>
         <label className={`weekly-order-upload-button${secondaryOrderLoading ? ' is-loading' : ''}`}>{secondaryOrderLoading ? (secondaryOrderProgress || 'Reading…') : secondaryOrders ? 'Replace secondary report' : 'Choose secondary report'}<input aria-label="Upload Secondary Order Report" type="file" accept=".xlsx,.xls,.csv" disabled={secondaryOrderLoading} onChange={(event) => { uploadSecondaryOrderReport(event.target.files?.[0]); event.target.value = ''; }}/></label>
         {secondaryOrderFileName && <div className="weekly-order-file"><b>{secondaryOrderFileName}</b><span>{secondaryOrders?.stats?.rows?.toLocaleString()} rows · {addon.weeks.reduce((sum, week) => sum + (addon.matchedSecondaryOrdersByWeek[week.key]?.length || 0), 0).toLocaleString()} qualifying matched Visit Orders for {monthLabel(month)}</span></div>}
         {secondaryOrderError && <p className="weekly-order-error" role="alert">{secondaryOrderError}</p>}
       </section>
+      <section className="card weekly-order-upload" aria-label="NCOT Report upload">
+        <div><span className="eyebrow">NEW RETAILER SOURCE</span><h3>Upload NCOT Report</h3><p>Counts a unique dealer when its Employee Code or Assign User matches a same-day Check-In with Joint Working = YES, and its creation time is later. {ncotReport && ncotReport.stats.validCreationTimestamps === 0 ? 'This upload has dates only, so it cannot confirm after-Check-In order.' : 'Creation time is required to confirm that the dealer was added after Check-In.'} Clear the report to return to manual entries.</p></div>
+        <label className={`weekly-order-upload-button${ncotLoading ? ' is-loading' : ''}`}>{ncotLoading ? (ncotProgress || 'Reading…') : ncotReport ? 'Replace NCOT report' : 'Choose NCOT report'}<input aria-label="Upload NCOT Report" type="file" accept=".xlsx,.xls,.csv" disabled={ncotLoading} onChange={(event) => { uploadNcotReport(event.target.files?.[0]); event.target.value = ''; }}/></label>
+        {ncotFileName && <div className="weekly-order-file"><b>{ncotFileName}</b><span>{ncotReport?.stats?.rows?.toLocaleString()} rows · {ncotReport?.stats?.validCreationTimestamps?.toLocaleString()} with creation time · {Object.values(addon.actualByRow.newRetailers).reduce((sum, value) => sum + (Number(value) || 0), 0).toLocaleString()} qualifying dealers this month</span><button className="secondary" type="button" onClick={() => { setNcotReport(null); setNcotFileName(''); setNcotError(''); }}>Clear NCOT report</button></div>}
+        {ncotError && <p className="weekly-order-error" role="alert">{ncotError}</p>}
+      </section>
+      </div>
       <div className="table-scroll"><table className="q3-bucket-table weekly-sales-table"><thead><tr><th rowSpan="2">KPI</th>{addon.weeks.map((week) => <th key={week.key} colSpan="2">{week.label}</th>)}<th rowSpan="2" className="weekly-month-total">MONTH TOTAL</th></tr><tr>{addon.weeks.flatMap((week) => [<th key={`${week.key}-plan`}>PLAN</th>, <th key={`${week.key}-actual`}>ACTUAL</th>])}</tr></thead>
         <tbody>{addon.rows.map((row) => <tr key={row.key}><th><span>{row.label}</span><small>{row.actualSource}</small></th>{addon.weeks.flatMap((week) => {
-          const isManual = row.key === 'retainedRetailers' || row.key === 'newRetailers';
+          const isManual = row.key === 'retainedRetailers' || (row.key === 'newRetailers' && !addon.ncotActualsLoaded);
           const actual = getActual(row, week);
           const planValue = editingPlans ? (planDraft[row.key]?.[week.key] ?? row.plan) : Number(monthPlans[row.key]?.[week.key] ?? row.plan);
           return [<td className="weekly-plan" key={`${week.key}-plan`}>{editingPlans ? <input aria-label={`${row.label} ${week.label} plan`} type="number" min="0" step="any" value={planValue} className={isValidPlanValue(planValue) ? '' : 'invalid'} onChange={(event) => setPlanDraft((current) => ({ ...current, [row.key]: { ...(current[row.key] || {}), [week.key]: event.target.value } }))}/> : Number(planValue).toLocaleString('en-IN')}</td>, <td key={`${week.key}-actual`} className="weekly-actual">{isManual ? <input aria-label={`${row.label} ${week.label} actual`} type="number" min="0" step="any" value={monthManualActuals[row.key]?.[week.key] ?? ''} className={isValidManualActual(monthManualActuals[row.key]?.[week.key] ?? '') ? '' : 'invalid'} onChange={(event) => updateManual(row.key, week.key, event.target.value)} placeholder="Pending"/> : typeof actual === 'string' && !/^\d[\d,.]*$/.test(actual) ? <span className="weekly-status">{actual}</span> : actual}</td>];
         })}<td className="weekly-month-total">{typeof getMonthTotal(row) === 'number' ? formatMonthTotal(row) : <span className="weekly-status">{formatMonthTotal(row)}</span>}</td></tr>)}</tbody></table></div>
-      <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts each eligible Manager + Territory employee/date once when that person has at least one Check-In qualifying under Manager + Territory Q.2. Q.4 counts unique matching Secondary Order Report Order IDs for Visit Orders with Approved or Pending status, matched to a same-day Check-In by employee ID (name fallback) + date; that Check-In must have Joint Working = YES and Secondary sales type. Q.5 sums Basic Order Value from those same matched orders. Average Order Value = Q.5 ÷ Q.4; currency actuals and average order value are rounded up to whole rupees. Old Retailer Retained and New Retailer Added are manually editable and saved in this browser.</p>
+      <p className="q3-scope-note">SSP counts unique Manager + Territory employees with Joint Working = YES, by week; the Q1–Q3 Zonal Manager exclusions do not apply to this row. Total Days of Joint Working counts each eligible Manager + Territory employee/date once when that person has at least one Check-In qualifying under Manager + Territory Q.2. Q.4 counts unique matching Secondary Order Report Order IDs for Visit Orders with Approved or Pending status, matched to a same-day Check-In by employee ID (name fallback) + date; that Check-In must have Joint Working = YES and Secondary sales type. Q.5 sums Basic Order Value from those same matched orders. Average Order Value = Q.5 ÷ Q.4; currency actuals and average order value are rounded up to whole rupees. Old Retailer Retained remains manually editable. New Retailer Added uses the uploaded NCOT Report when present; without it, the saved manual actual is used.</p>
       <p className="q3-scope-note">The Joint Working Source Audit lists the Q.2 Check-In rows behind this count. Sum “Unique Employee-Date Pair Contribution” to reconcile each weekly actual; repeated qualifying Check-Ins for the same employee and date contribute 0 after the first. A Manager + Territory employee/date is included only if it has at least one qualifying Q.2 retailer Check-In.</p>
       <div className="q3-export-bar"><b>All Weekly Actuals · source rows and contribution columns</b><button className="secondary" disabled={!addon || editingPlans} onClick={exportWeeklyActualsCsv}>Actuals Detail CSV</button><button className="secondary" disabled={!addon || editingPlans} onClick={exportWeeklyActualsWorkbook}>Actuals Detail Excel</button></div>
       <section className="weekly-kpi-actual-downloads" aria-label="Individual weekly KPI actual reports">

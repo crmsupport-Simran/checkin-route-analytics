@@ -1,10 +1,12 @@
-import { parseAttendanceBuffer, parseDealersBuffer, parseSecondaryOrdersBuffer } from './supplementalParser';
+import { parseAttendanceBuffer, parseDealersBuffer, parseNcotBuffer, parseSecondaryOrdersBuffer } from './supplementalParser';
 
 self.onmessage = ({ data }) => {
   try {
     self.postMessage({ stage: 'Parsing workbook…', progress: 40 });
     const result = data.kind === 'dealers'
       ? parseDealersBuffer(data.fileBuffer)
+      : data.kind === 'ncot'
+        ? parseNcotBuffer(data.fileBuffer)
       : data.kind === 'secondary-orders'
         ? parseSecondaryOrdersBuffer(data.fileBuffer)
         : parseAttendanceBuffer(data.fileBuffer);

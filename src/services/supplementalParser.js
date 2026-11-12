@@ -75,3 +75,91 @@ export function parseSecondaryOrdersBuffer(fileBuffer) {
   const validDates = records.map((row) => row.dateKey).filter(Boolean).sort();
   return { sheetName, records, stats: { rows: records.length, validDates: records.filter((row) => row.dateKey).length, validBasicAmounts: records.filter((row) => row.basicAmount !== null).length, uniqueOrders: new Set(records.map((row) => row.orderId).filter(Boolean)).size, minDate: validDates[0] || '', maxDate: validDates.at(-1) || '' } };
 }
+
+function timeParts(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return { hours: value.getHours(), minutes: value.getMinutes(), seconds: value.getSeconds() };
+  if (typeof value === 'number' && value >= 0 && value < 1) {
+    const minutes = Math.round(value * 24 * 60);
+    return { hours: Math.floor(minutes / 60), minutes: minutes % 60, seconds: 0 };
+  }
+  const match = text(value).match(/(?:^|[ T])(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const meridiem = (match[4] || '').toUpperCase();
+  if (meridiem === 'PM' && hours < 12) hours += 12;
+  if (meridiem === 'AM' && hours === 12) hours = 0;
+  if (hours > 23 || Number(match[2]) > 59 || Number(match[3] || 0) > 59) return null;
+  return { hours, minutes: Number(match[2]), seconds: Number(match[3] || 0) };
+}
+
+export function parseNcotBuffer(fileBuffer) {
+  const { sheetName, rows, columns } = rowsFromBuffer(fileBuffer, 'NCOT Report');
+  if (!rows.length) throw new Error('The NCOT report has no data rows.');
+  const hasColumn = (...names) => names.some((name) => columns[normalize(name)]);
+  const dateTimeColumns = ['Created At', 'Created On', 'Creation Date Time', 'Dealer Created At', 'Retailer Created At', 'Created Date Time', 'Date Created'];
+  const createdDateColumns = ['Created Date', 'Creation Date', 'Dealer Created Date', 'Retailer Created Date', 'Date of Creation', 'NCOT Date'];
+  const createdTimeColumns = ['Created Time', 'Creation Time', 'Dealer Created Time', 'Retailer Created Time', 'Time Created', 'NCOT Time', 'Created At'];
+  if (!hasColumn(...dateTimeColumns, ...createdDateColumns)) throw new Error('The NCOT report must include a dealer creation date or timestamp (for example, Created At or Created Date).');
+  if (!hasColumn('Created By Employee ID', 'Created By Employee Code', 'Created By Emp ID', 'Employee ID', 'Employee Code', 'Emp ID', 'Sales User ID', 'BDO ID', 'Created By ID', 'Assign User', 'Sales User Name', 'Employee Name', 'BDO Name')) {
+    throw new Error('The NCOT report must include Employee Code or Assign User (or equivalent employee identity) so new dealers can be matched to Check-Ins.');
+  }
+  if (!hasColumn('Dealer ID', 'New Dealer ID', 'Retailer ID', 'New Retailer ID', 'Customer ID', 'Account ID', 'Dealer Code', 'Retailer Code', 'Customer Code', 'Account Code', 'Type ID', 'Dealer Name', 'Retailer Name', 'Customer Name', 'Company Name', 'Name')) {
+    throw new Error('The NCOT report must include a Dealer/Retailer ID or name to count each newly created dealer once.');
+  }
+  const idFields = ['Created By Employee ID', 'Created By Employee Code', 'Created By Emp ID', 'Employee ID', 'Employee Code', 'Emp ID', 'Sales User ID', 'BDO ID', 'Created By ID'];
+  const nameFields = ['Assign User', 'Sales User Name', 'Employee Name', 'BDO Name', 'Employee', 'Sales User', 'Created By Name'];
+  const dealerIdFields = ['Dealer ID', 'New Dealer ID', 'Retailer ID', 'New Retailer ID', 'Customer ID', 'Account ID', 'Dealer Code', 'Retailer Code', 'Customer Code', 'Account Code', 'Type ID'];
+  const dealerNameFields = ['Dealer Name', 'Retailer Name', 'Customer Name', 'Company Name', 'Name'];
+  const records = rows.map((row, index) => {
+    const get = headerGetter(row, columns);
+    const firstNonblank = (...names) => names.map((name) => get(name)).find((value) => text(value) !== '') ?? '';
+    const rawCreatedAt = firstNonblank(...dateTimeColumns);
+    const rawCreatedDateOnly = firstNonblank(...createdDateColumns);
+    const timeOnlyValue = typeof rawCreatedAt === 'number' ? rawCreatedAt >= 0 && rawCreatedAt < 1
+      : rawCreatedAt instanceof Date ? rawCreatedAt.getFullYear() < 1901
+        : /^\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?$/i.test(text(rawCreatedAt));
+    const rawCreatedDate = timeOnlyValue ? (rawCreatedDateOnly || '') : (rawCreatedAt || rawCreatedDateOnly);
+    const rawCreatedTime = timeOnlyValue ? rawCreatedAt : firstNonblank(...createdTimeColumns.filter((name) => name !== 'Created At'));
+    const parsedDate = dateValue(rawCreatedDate);
+    const explicitDateTime = rawCreatedDate instanceof Date
+      ? rawCreatedDate.getHours() !== 0 || rawCreatedDate.getMinutes() !== 0 || rawCreatedDate.getSeconds() !== 0
+      : /(?:[T ]\d{1,2}:\d{2})/.test(text(rawCreatedDate));
+    const parts = rawCreatedTime !== '' ? timeParts(rawCreatedTime) : explicitDateTime && parsedDate
+      ? timeParts(rawCreatedDate)
+      : null;
+    const createdAt = parsedDate && parts
+      ? new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), parts.hours, parts.minutes, parts.seconds)
+      : null;
+    const creatorId = text(firstNonblank(...idFields));
+    const creatorName = text(firstNonblank(...nameFields));
+    const dealerId = text(firstNonblank(...dealerIdFields));
+    const dealerName = text(firstNonblank(...dealerNameFields));
+    const sourceRow = index + 2;
+    return {
+      sourceRow,
+      dateKey: dateKey(parsedDate),
+      createdAt,
+      createdAtLabel: createdAt ? createdAt.toLocaleString('en-IN') : text(rawCreatedAt || rawCreatedDate),
+      hasCreationTime: Boolean(createdAt),
+      employeeId: creatorId,
+      employeeName: creatorName,
+      dealerId,
+      dealerName,
+      dealerKey: dealerId ? `ID:${normalize(dealerId)}` : dealerName ? `NAME:${normalize(dealerName)}` : '',
+    };
+  });
+  const validDates = records.map((row) => row.dateKey).filter(Boolean).sort();
+  return {
+    sheetName,
+    records,
+    stats: {
+      rows: records.length,
+      validCreationTimestamps: records.filter((row) => row.createdAt).length,
+      validCreatorIdentities: records.filter((row) => row.employeeId || row.employeeName).length,
+      validDealerIdentities: records.filter((row) => row.dealerKey).length,
+      uniqueDealers: new Set(records.map((row) => row.dealerKey).filter(Boolean)).size,
+      minDate: validDates[0] || '',
+      maxDate: validDates.at(-1) || '',
+    },
+  };
+}
