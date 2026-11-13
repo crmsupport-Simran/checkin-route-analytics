@@ -83,7 +83,7 @@ def numbered(items):
 p=doc.add_paragraph(style='Title'); p.add_run('Check In Route Analytics Dashboard SOP')
 p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(12); rr=p.add_run('Dashboard inventory, data sources, business rules, and operating steps'); rr.font.size=Pt(12); rr.font.color.rgb=RGBColor(23,107,135)
 table(['Document control','Details'],[
-('Version / reviewed','2.7 · 12 November 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
+('Version / reviewed','2.8 · 13 November 2026'),('Application','Check-In Route Analytics · browser-based CRM analytics'),('Purpose','Explain what each dashboard reports, how it calculates values, what source fields it uses, and how to operate and reconcile it.'),('Rule authority','Current application source code plus user-approved business clarifications recorded during implementation. Where rules differ by report, the report-specific rule is stated separately.')],[1.55,5.9])
 para('Read this SOP as a guide to the current app. Calculated values come from the workbook loaded in that browser; manual plans and selected manual actuals are separate inputs. The same word, such as “Q1” or “unique,” can mean different things in separate dashboards, so use the report name and scope shown in each section.')
 para('The current light theme follows the official CRM reference: a deep navy vertical navigation rail, compact white content cards, royal-blue active navigation and primary actions, with green reserved for secondary-sales accents. Use Appearance to switch Light, Dark, or System mode; the selection is retained in this browser.')
 
@@ -98,6 +98,7 @@ table(['Tab / section','What it shows','Primary inputs'],[
 ('Q1–Q2 Reports','Dedicated Manager + Territory Q1 visit-day report and Q2 unique Channel Partner report.','Check-In workbook.'),
 ('Weekly Sales Performance','Weekly plan versus actual rows, editable plans, manual retailer actuals, and Secondary Order Report upload for Q.4/Q.5.','Check-In workbook + Secondary Order Report.'),
 ('CHECKIN-OUT REPORT','Employee-day attendance and visit-category summary with filters and exports.','Check-In workbook + optional Secondary Order Report.'),
+('Comp-Off Records','Employee-wise Sunday and National Holiday ledger, rule decisions, persistent Pending/Availed/Expired status, and export/print.','Check-In workbook + optional Attendance Report; National Holiday dates.'),
 ('Employee Tour Plan','Historical employee/day route, attendance anchors, expected distance, and detailed route audit.','Check-In and Attendance; Dealer Master can enrich GPS.')],[1.55,3.15,2.75])
 
 doc.add_heading('2. Standard operating procedure',level=1)
@@ -108,6 +109,7 @@ bullets([
 'Upload the matching Attendance Report for attendance start/stop times, coordinates, and route anchors. Upload Dealer Master for assigned dealers, planning, and optional visit-coordinate matching.',
 'Upload the Secondary Order Report from the Weekly Sales Performance tab. Q.4/Q.5 stay pending until both the Check-In workbook and Secondary Order Report are available.',
 'CHECKIN-OUT REPORT reuses the same Check-In upload. The Secondary Order Report is also used there for order count and sale when its matching rules are met.',
+'Open Comp-Off Records to generate an employee-wise Sunday/National Holiday ledger from the loaded Check-In and Attendance reports. Add any company-specific National Holiday dates that are not among the default dates shown there.',
 'Choose the dashboard tab and reporting month. Confirm the source file name and month before interpreting or exporting values.',
 'Use Calculation Details or source audit tables to inspect source rows, eligibility, duplicates, missing identifiers, and exclusion reasons when a KPI does not reconcile.',
 'In Weekly Sales Performance, the Month Total column appears after Week 4. Use each KPI report or the Actuals Detail exports to download all four weekly actuals, the month total, and (for calculated KPIs) the source rows and contribution values behind those actuals.',
@@ -116,7 +118,7 @@ bullets([
 doc.add_heading('3. Welcome screen and tab behavior',level=1)
 para('Each new browser tab starts on a branded welcome screen using the Check-In Route Analytics artwork, fitted in full without cropping. A prominent blue Login button sits above the screen midpoint. Login opens the dashboard and records dismissal in that tab’s sessionStorage. Refreshing the same tab keeps the dashboard open; closing the tab ends that session, so a newly opened tab shows the welcome screen again. The Login button is a navigation/start control and does not verify credentials.')
 doc.add_heading('4. Uploaded data and saved settings',level=1)
-para('Uploaded Check-In, Attendance, Dealer Master, Secondary Order Report, and NCOT files are session-only and are not retained after a page refresh or close. The app also clears any older persisted Check-In workbook from its previous storage version. Weekly plans, old/new retailer manual actuals, and appearance remain saved in local browser storage.')
+para('Uploaded Check-In, Attendance, Dealer Master, Secondary Order Report, and NCOT files are session-only and are not retained after a page refresh or close. The app also clears any older persisted Check-In workbook from its previous storage version. Weekly plans, old/new retailer manual actuals, Comp-Off ledger/statuses, custom National Holiday dates, and appearance remain saved in local browser storage.')
 
 doc.add_heading('5. Common data preparation and date handling',level=1)
 bullets([
@@ -259,6 +261,18 @@ numbered([
 'Compare the weekly breakdown and source-row audit before comparing totals. Half-month KPI values equal W1+W2 or W3+W4 as applicable.',
 'If an expected reference differs, retain the source-driven actual, document the exact rows/rules responsible, and do not hardcode actuals to force a match.'
 ])
+
+doc.add_heading('18. Comp-Off Records',level=1)
+para('Comp-Off Records is a separate employee-wise ledger. It reads the currently loaded Check-In and optional Attendance reports; it does not alter Check-In, Attendance, or any existing KPI calculation. It combines employee identity and date, preferring Employee Code/Emp ID and using a normalized name only when an ID is missing. Duplicate source rows for the same employee/date produce one record.')
+bullets([
+'Sundays are detected from the calendar. The default India National Holiday dates are January 26, August 15, and October 2 for each year found in the loaded reports. Use Add a National Holiday date for additional company-designated dates; configured dates are saved in this browser.',
+'A valid Check-In timestamp on a Sunday or configured National Holiday marks the employee PRESENT, marks Comp-Off ELIGIBLE, and creates a Pending record. The record includes the employee, working date, day type, Check-In status, attendance decision, travel start/stop and duration when available, eligibility, and Comp-Off status.',
+'When no valid Check-In exists, Attendance Start Time and Stop Time are used to evaluate travel. A night departure at or after 9:00 PM that ends by noon the next day is marked Review Required and is not marked Present; confirm that travel was toward home to apply Leave under policy. An evening Stop Time is treated as Leave. Travel under four hours on a Sunday/National Holiday is flagged for destination review. Because uploaded reports do not include employee home locations, only confirmed home travel should be retained as Week Off / National Holiday with no Comp-Off.',
+'A no-Check-In case without enough travel detail for one of those decisions is marked REVIEW REQUIRED. It remains in the ledger for review, is not marked Present, and does not create an eligible Comp-Off award.',
+'Eligible records default to Pending. Users can change the status to Availed or Expired. Records and status changes are saved in this browser and retained when later uploads refresh the generated ledger; uploads themselves remain session-only.',
+'Search by employee, filter by date and status, and export the filtered records to CSV or Excel or use Print. Exported values reflect the displayed filter scope.'
+])
+para('The standard three National Holiday dates are defaults, not a complete company holiday calendar. Additional dates must be entered in Comp-Off Records. Travel data does not identify an employee home location; short-trip cases remain under review until home travel is confirmed, and no ambiguous no-Check-In case is automatically marked Present. Leave labels are informational and do not change leave balances.')
 
 doc.add_heading('Appendix A. Configured designation and exclusion lists',level=1)
 para('Lists below are normalized exact values from the current business-rule configurations. The list named by a report section governs that report; the lists are not interchangeable.')
