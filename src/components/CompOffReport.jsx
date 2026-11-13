@@ -67,7 +67,7 @@ export default function CompOffReport({ report, attendance }) {
   };
 
   return <main className="comp-off-report">
-    <header className="comp-off-heading"><div><span className="eyebrow">ATTENDANCE MANAGEMENT</span><h2>COMP-OFF RECORDS</h2><p>Generated from the loaded Check-In and Attendance reports. Record status is saved in this browser for future tracking.</p></div><div className="comp-off-actions"><button className="secondary" onClick={downloadCsv}>Export CSV</button><button className="secondary" onClick={downloadExcel}>Export Excel</button><button className="secondary" onClick={() => window.print()}>Print</button></div></header>
+    <div className="comp-off-heading"><div><span className="eyebrow">ATTENDANCE MANAGEMENT</span><h2>COMP-OFF RECORDS</h2><p>Generated from the loaded Check-In and Attendance reports. Record status is saved in this browser for future tracking.</p></div><div className="comp-off-actions"><button className="secondary" onClick={downloadCsv}>Export CSV</button><button className="secondary" onClick={downloadExcel}>Export Excel</button><button className="secondary" onClick={() => window.print()}>Print</button></div></div>
 
     <section className="comp-off-policy card">
       <div><b>Automatic rules</b><p>A valid Check-In on Sunday or a configured National Holiday marks the employee PRESENT and creates a Pending Comp-Off record. Without a Check-In, the app never grants Present or Comp-Off automatically; it applies supported travel exclusions and sends ambiguous cases for review.</p></div>
