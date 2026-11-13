@@ -134,6 +134,9 @@ function createCandidates(report, attendance, holidayDates) {
     if (!isSunday && !isNationalHoliday) return [];
 
     const validCheckins = candidate.checkins.filter(hasValidCheckIn);
+    const sourceAttendanceStatus = candidate.attendanceRows
+      .map((row) => normalize(row.status))
+      .find((status) => status === 'P' || status === 'WO') || '';
     const timeRows = candidate.attendanceRows.filter((row) => validDate(row.start) || validDate(row.stop));
     const firstStart = timeRows.map((row) => row.start).filter(validDate).sort((a, b) => a - b)[0] || null;
     const lastStop = timeRows.map((row) => row.stop).filter(validDate).sort((a, b) => a - b).at(-1) || null;
@@ -150,7 +153,7 @@ function createCandidates(report, attendance, holidayDates) {
     let eligibility;
     let policyNote;
     if (validCheckins.length) {
-      attendanceStatus = 'PRESENT';
+      attendanceStatus = 'P';
       eligibility = 'ELIGIBLE';
       policyNote = `Valid Check-In recorded (${validCheckins.length} row${validCheckins.length === 1 ? '' : 's'}).`;
     } else if (nightTravel) {
@@ -169,6 +172,15 @@ function createCandidates(report, attendance, holidayDates) {
       attendanceStatus = 'REVIEW REQUIRED';
       eligibility = 'REVIEW';
       policyNote = 'No valid Check-In; available travel details do not establish an automatic Present decision.';
+    }
+
+    if (sourceAttendanceStatus === 'WO') {
+      attendanceStatus = 'WO';
+      eligibility = 'NOT ELIGIBLE';
+      policyNote = 'Attendance Report marks this date WO; no Comp-Off is granted.';
+    } else if (sourceAttendanceStatus === 'P') {
+      attendanceStatus = 'P';
+      if (!validCheckins.length) policyNote = `Attendance Report marks this date P. ${policyNote} No qualifying Check-In was found, so Comp-Off is not automatically granted.`;
     }
 
     const dayTypes = [isSunday && 'Sunday', isNationalHoliday && 'National Holiday'].filter(Boolean);
