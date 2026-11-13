@@ -37,8 +37,12 @@ export function defaultNationalHolidayDates(years) {
   const dates = [];
   for (const year of years) {
     for (const date of [`${year}-01-26`, `${year}-08-15`, `${year}-10-02`]) dates.push(date);
+    if (Number(year) === 2026) dates.push(
+      '2026-02-15', '2026-03-04', '2026-05-01', '2026-08-28',
+      '2026-09-04', '2026-10-20', '2026-11-08', '2026-11-09', '2026-11-11',
+    );
   }
-  return dates;
+  return [...new Set(dates)].sort();
 }
 
 function dateKeyOf(value) {
