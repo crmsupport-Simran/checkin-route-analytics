@@ -1,5 +1,6 @@
 export const COMP_OFF_RECORDS_STORAGE_KEY = 'checkin-route-analytics-comp-off-records-v1';
 export const COMP_OFF_HOLIDAYS_STORAGE_KEY = 'checkin-route-analytics-comp-off-holidays-v1';
+export const COMP_OFF_HOLIDAY_NAMES_STORAGE_KEY = 'checkin-route-analytics-comp-off-holiday-names-v1';
 
 const clean = (value) => String(value ?? '').trim();
 const normalize = (value) => clean(value).replace(/\s+/g, ' ').toLocaleUpperCase();
@@ -33,6 +34,23 @@ export function saveCompOffHolidays(dates, storage = globalThis.localStorage) {
   return cleaned;
 }
 
+export function readCompOffHolidayNames(storage = globalThis.localStorage) {
+  try {
+    const parsed = JSON.parse(storage?.getItem(COMP_OFF_HOLIDAY_NAMES_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? Object.fromEntries(Object.entries(parsed).filter(([date, name]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && clean(name)))
+      : {};
+  } catch { return {}; }
+}
+
+export function saveCompOffHolidayNames(names, storage = globalThis.localStorage) {
+  const cleaned = Object.fromEntries(Object.entries(names || {})
+    .filter(([date, name]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && clean(name))
+    .map(([date, name]) => [date, clean(name)]));
+  try { storage?.setItem(COMP_OFF_HOLIDAY_NAMES_STORAGE_KEY, JSON.stringify(cleaned)); } catch { /* Holiday labels remain active for this view. */ }
+  return cleaned;
+}
+
 export function defaultNationalHolidayDates(years) {
   const dates = [];
   for (const year of years) {
@@ -43,6 +61,30 @@ export function defaultNationalHolidayDates(years) {
     );
   }
   return [...new Set(dates)].sort();
+}
+
+export function defaultNationalHolidayNames(years) {
+  const names = {};
+  for (const year of years) {
+    const y = Number(year);
+    Object.assign(names, {
+      [`${y}-01-26`]: 'REPUBLIC DAY',
+      [`${y}-08-15`]: 'INDEPENDENCE DAY',
+      [`${y}-10-02`]: 'GANDHI JAYANTI',
+    });
+    if (y === 2026) Object.assign(names, {
+      '2026-02-15': 'MAHA SHIVRATRI',
+      '2026-03-04': 'HOLI',
+      '2026-05-01': 'LABOUR DAY',
+      '2026-08-28': 'RAKSHA BANDHAN',
+      '2026-09-04': 'KRISHNA JANMASHTAMI',
+      '2026-10-20': 'DUSSEHRA',
+      '2026-11-08': 'DIWALI',
+      '2026-11-09': 'GOVARDHAN PUJA',
+      '2026-11-11': 'BHAIYA DUJ',
+    });
+  }
+  return names;
 }
 
 function dateKeyOf(value) {
@@ -76,7 +118,7 @@ function dayLabel(dateKey) {
   return new Date(year, month - 1, day).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function createCandidates(report, attendance, holidayDates) {
+function createCandidates(report, attendance, holidayDates, holidayNames = {}) {
   const candidates = new Map();
   const aliasesByName = new Map();
   const ensure = (identity, dateKey, details) => {
@@ -183,7 +225,8 @@ function createCandidates(report, attendance, holidayDates) {
       if (!validCheckins.length) policyNote = `Attendance Report marks this date P. ${policyNote} No qualifying Check-In was found, so Comp-Off is not automatically granted.`;
     }
 
-    const dayTypes = [isSunday && 'Sunday', isNationalHoliday && 'National Holiday'].filter(Boolean);
+    const holidayName = clean(holidayNames[candidate.dateKey]);
+    const dayTypes = [isSunday && 'Sunday', isNationalHoliday && (holidayName || 'National Holiday')].filter(Boolean);
     return [{
       key: candidate.key,
       employeeName: candidate.name,
@@ -205,12 +248,12 @@ function createCandidates(report, attendance, holidayDates) {
   }).sort((a, b) => a.workingDate.localeCompare(b.workingDate) || a.employeeName.localeCompare(b.employeeName));
 }
 
-export function generateCompOffCandidates(report, attendance, customHolidayDates = []) {
+export function generateCompOffCandidates(report, attendance, customHolidayDates = [], holidayNames = {}) {
   const years = new Set();
   for (const row of report?.records || []) if (row.dateKey) years.add(Number(row.dateKey.slice(0, 4)));
   for (const row of attendance?.records || []) if (row.dateKey) years.add(Number(row.dateKey.slice(0, 4)));
   const holidays = new Set([...defaultNationalHolidayDates(years), ...customHolidayDates]);
-  return createCandidates(report, attendance, [...holidays]);
+  return createCandidates(report, attendance, [...holidays], holidayNames);
 }
 
 export function mergeCompOffRecords(existing, generated) {

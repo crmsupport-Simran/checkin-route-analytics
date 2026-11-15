@@ -4,9 +4,12 @@ import {
   generateCompOffCandidates,
   mergeCompOffRecords,
   defaultNationalHolidayDates,
+  defaultNationalHolidayNames,
   readCompOffHolidays,
+  readCompOffHolidayNames,
   readCompOffRecords,
   saveCompOffHolidays,
+  saveCompOffHolidayNames,
   saveCompOffRecords,
 } from '../services/compOffService';
 import '../comp-off-report.css';
@@ -44,30 +47,37 @@ const toDateKey = (value) => {
 };
 
 function readHolidayDates(workbook) {
-  const dates = new Set();
+  const names = {};
   let foundHolidayDateColumn = false;
   for (const sheetName of workbook.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: true });
     if (!rows.length) continue;
     const headers = Object.keys(rows[0]);
-    const dateHeader = headers.find((header) => header.trim().toLocaleLowerCase() === 'holiday date');
+    const normalizedHeader = (value) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+    const dateHeader = headers.find((header) => normalizedHeader(header) === 'holidaydate');
     if (!dateHeader) continue;
     foundHolidayDateColumn = true;
-    const typeHeader = headers.find((header) => header.trim().toLocaleLowerCase() === 'holiday type');
+    const typeHeader = headers.find((header) => normalizedHeader(header) === 'holidaytype');
+    const nameHeader = headers.find((header) => normalizedHeader(header) === 'holidayname');
     for (const row of rows) {
       if (typeHeader && !/^national$/i.test(String(row[typeHeader] ?? '').trim())) continue;
       const date = toDateKey(row[dateHeader]);
-      if (date) dates.add(date);
+      if (!date) continue;
+      const name = String(nameHeader ? row[nameHeader] ?? '' : '').trim();
+      if (name) names[date] = [...new Set([...(names[date] || '').split(' / ').filter(Boolean), name])].join(' / ');
+      else names[date] ||= '';
     }
   }
   if (!foundHolidayDateColumn) throw new Error('No “Holiday Date” column was found.');
-  if (!dates.size) throw new Error('No valid National holiday dates were found.');
-  return [...dates].sort();
+  const dates = Object.keys(names).sort();
+  if (!dates.length) throw new Error('No valid National holiday dates were found.');
+  return { dates, names: Object.fromEntries(Object.entries(names).filter(([, name]) => name)) };
 }
 
 export default function CompOffReport({ report, attendance }) {
   const [records, setRecords] = useState(readCompOffRecords);
   const [holidayDates, setHolidayDates] = useState(readCompOffHolidays);
+  const [holidayNames, setHolidayNames] = useState(readCompOffHolidayNames);
   const [holidayInput, setHolidayInput] = useState('');
   const [holidayImportMessage, setHolidayImportMessage] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState('');
@@ -75,10 +85,16 @@ export default function CompOffReport({ report, attendance }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const generated = useMemo(() => generateCompOffCandidates(report, attendance, holidayDates), [report, attendance, holidayDates]);
+  const generated = useMemo(() => {
+    const reportYears = [...(report?.records || []), ...(attendance?.records || [])]
+      .map((row) => Number(String(row.dateKey || '').slice(0, 4))).filter(Boolean);
+    const names = { ...defaultNationalHolidayNames(reportYears), ...holidayNames };
+    return generateCompOffCandidates(report, attendance, holidayDates, names);
+  }, [report, attendance, holidayDates, holidayNames]);
   useEffect(() => setRecords((previous) => mergeCompOffRecords(previous, generated)), [generated]);
   useEffect(() => saveCompOffRecords(records), [records]);
   useEffect(() => { saveCompOffHolidays(holidayDates); }, [holidayDates]);
+  useEffect(() => { saveCompOffHolidayNames(holidayNames); }, [holidayNames]);
 
   const shown = useMemo(() => records.filter((row) => {
     const search = employeeFilter.trim().toLocaleLowerCase();
@@ -106,13 +122,15 @@ export default function CompOffReport({ report, attendance }) {
     if (!file) return;
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-      const importedDates = readHolidayDates(workbook);
+      const imported = readHolidayDates(workbook);
       const reportYears = [...(report?.records || []), ...(attendance?.records || [])]
         .map((row) => Number(String(row.dateKey || '').slice(0, 4))).filter(Boolean);
       const existing = new Set([...holidayDates, ...defaultNationalHolidayDates(reportYears)]);
-      const added = importedDates.filter((date) => !existing.has(date));
-      setHolidayDates((previous) => [...new Set([...previous, ...importedDates])].sort());
-      setHolidayImportMessage(`${added.length} new date${added.length === 1 ? '' : 's'} added from ${file.name}; ${importedDates.length - added.length} already configured.`);
+      const added = imported.dates.filter((date) => !existing.has(date));
+      setHolidayDates((previous) => [...new Set([...previous, ...imported.dates])].sort());
+      setHolidayNames((previous) => ({ ...previous, ...imported.names }));
+      const named = Object.keys(imported.names).length;
+      setHolidayImportMessage(`${added.length} new date${added.length === 1 ? '' : 's'} added and ${named} holiday name${named === 1 ? '' : 's'} loaded from ${file.name}; ${imported.dates.length - added.length} dates already configured.`);
     } catch (error) {
       setHolidayImportMessage(error?.message || 'Could not read this holiday report.');
     }
@@ -145,7 +163,7 @@ export default function CompOffReport({ report, attendance }) {
 
     <section className="comp-off-policy card">
       <div><b>Automatic rules</b><p>A valid Check-In on Sunday or a configured National Holiday marks the employee P and creates a Pending Comp-Off record. Attendance Report status P is shown green; WO is shown red and is not eligible for Comp-Off. Without a valid Check-In, a source P does not automatically create Comp-Off; supported travel exclusions apply and ambiguous cases go for review.</p></div>
-      <div className="comp-off-holidays"><label htmlFor="comp-off-holiday-date">National Holiday dates</label><div className="comp-off-holiday-actions"><input id="comp-off-holiday-date" type="date" value={holidayInput} onChange={(event) => setHolidayInput(event.target.value)}/><button className="secondary" disabled={!holidayInput || holidayDates.includes(holidayInput)} onClick={addHoliday}>Add date</button><label className="secondary comp-off-holiday-upload" htmlFor="comp-off-holiday-file">Upload Holiday Report</label><input id="comp-off-holiday-file" className="comp-off-file-input" type="file" accept=".xlsx,.xls,.csv" onChange={importHolidayReport}/></div><small>The supplied 2026 Holiday Report dates are included by default. For other years, upload an Excel/CSV with a “Holiday Date” column; only NATIONAL rows are imported and saved in this browser.</small>{holidayImportMessage && <small className="comp-off-import-status" role="status">{holidayImportMessage}</small>}{!!holidayDates.length && <div className="comp-off-holiday-list"><b>Additional configured dates</b>{holidayDates.map((date) => <span key={date}>{date}<button type="button" title={`Remove ${date}`} aria-label={`Remove National Holiday ${date}`} onClick={() => setHolidayDates((previous) => previous.filter((item) => item !== date))}>×</button></span>)}</div>}</div>
+      <div className="comp-off-holidays"><label htmlFor="comp-off-holiday-date">National Holiday dates</label><div className="comp-off-holiday-actions"><input id="comp-off-holiday-date" type="date" value={holidayInput} onChange={(event) => setHolidayInput(event.target.value)}/><button className="secondary" disabled={!holidayInput || holidayDates.includes(holidayInput)} onClick={addHoliday}>Add date</button><label className="secondary comp-off-holiday-upload" htmlFor="comp-off-holiday-file">Upload Holiday Report</label><input id="comp-off-holiday-file" className="comp-off-file-input" type="file" accept=".xlsx,.xls,.csv" onChange={importHolidayReport}/></div><small>Holiday Date and Holiday Name are imported from the report; only NATIONAL rows are used. Holiday names are saved in this browser and shown in Day Type. The supplied 2026 Holiday Report names are included by default.</small>{holidayImportMessage && <small className="comp-off-import-status" role="status">{holidayImportMessage}</small>}{!!holidayDates.length && <div className="comp-off-holiday-list"><b>Additional configured dates</b>{holidayDates.map((date) => <span key={date}>{date}<button type="button" title={`Remove ${date}`} aria-label={`Remove National Holiday ${date}`} onClick={() => setHolidayDates((previous) => previous.filter((item) => item !== date))}>×</button></span>)}</div>}</div>
     </section>
 
     <section className="comp-off-controls card" aria-label="Comp-Off report filters">
