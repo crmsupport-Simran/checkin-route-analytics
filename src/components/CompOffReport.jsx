@@ -143,7 +143,19 @@ export default function CompOffReport({ report, attendance }) {
   };
   const downloadExcel = () => {
     const worksheet = XLSX.utils.aoa_to_sheet(exportRows());
-    worksheet['!cols'] = columns.map(([, label]) => ({ wch: Math.max(16, label.length + 3) }));
+    const columnWidths = { employeeName: 25, employeeCode: 16, workingDateLabel: 17, dayType: 23, checkInStatus: 20, attendanceStatus: 18, travelStart: 20, travelStop: 20, travelDuration: 17, compOffEligibility: 22, compOffStatus: 19, policyNote: 58 };
+    worksheet['!cols'] = columns.map(([key]) => ({ wch: columnWidths[key] || 18 }));
+    const headerStyle = { fill: { fgColor: { rgb: 'E8F1FB' } }, font: { color: { rgb: '17365C' }, bold: true }, alignment: { vertical: 'center', wrapText: true } };
+    const reviewStyle = { fill: { fgColor: { rgb: 'FFF8E8' } }, alignment: { vertical: 'top', wrapText: true } };
+    const cellStyle = { alignment: { vertical: 'top', wrapText: true } };
+    columns.forEach((column, columnIndex) => {
+      const headerCell = XLSX.utils.encode_cell({ r: 0, c: columnIndex });
+      if (worksheet[headerCell]) worksheet[headerCell].s = headerStyle;
+    });
+    shown.forEach((row, rowIndex) => columns.forEach(([key], columnIndex) => {
+      const cell = XLSX.utils.encode_cell({ r: rowIndex + 1, c: columnIndex });
+      if (worksheet[cell]) worksheet[cell].s = row.compOffEligibility === 'REVIEW' ? reviewStyle : cellStyle;
+    }));
     const attendanceStatusColumn = columns.findIndex(([key]) => key === 'attendanceStatus');
     shown.forEach((row, index) => {
       const status = String(row.attendanceStatus || '').toLocaleUpperCase();
@@ -181,11 +193,11 @@ export default function CompOffReport({ report, attendance }) {
       <article className="card"><span>NEEDS REVIEW</span><strong>{summary.review.toLocaleString()}</strong></article>
     </section>
 
-    <section className="card comp-off-table-card"><div className="comp-off-table-title"><div><span className="eyebrow">EMPLOYEE-WISE LEDGER</span><h3>{shown.length.toLocaleString()} Comp-Off record{shown.length === 1 ? '' : 's'}</h3></div><small>Change a qualifying record to Availed or Expired when processed.</small></div>
+    <section className="card comp-off-table-card"><div className="comp-off-table-title"><div><span className="eyebrow">EMPLOYEE-WISE LEDGER</span><h3>{shown.length.toLocaleString()} Comp-Off record{shown.length === 1 ? '' : 's'}</h3></div><div className="comp-off-table-tools"><button className="secondary" onClick={downloadCsv}>Download CSV</button><button className="secondary" onClick={downloadExcel}>Download Excel</button><small>Change a qualifying record to Availed or Expired when processed.</small></div></div>
       {!report && !attendance && !records.length && <div className="notice">Upload the existing Check-In and Attendance reports in the Dashboard to generate records. Saved records will remain available in this browser.</div>}
       {!!report && !attendance && <div className="notice">Attendance Report is not loaded. Check-In based eligibility is calculated, but travel duration and no-Check-In policy evaluation are unavailable.</div>}
       <div className="table-scroll"><table><thead><tr>{columns.map(([, label]) => <th key={label}>{label}</th>)}</tr></thead><tbody>{shown.map((row) => <tr key={row.key} className={row.compOffEligibility === 'REVIEW' ? 'comp-off-review' : ''}>
-        <td>{row.employeeName || '—'}</td><td>{row.employeeCode || '—'}</td><td>{row.workingDateLabel}</td><td>{row.dayType}</td><td>{row.checkInStatus}</td><td className={row.attendanceStatus === 'P' ? 'comp-off-attendance-present' : row.attendanceStatus === 'WO' ? 'comp-off-attendance-wo' : ''}>{row.attendanceStatus}</td><td>{row.travelDuration || '—'}</td><td>{row.compOffEligibility}</td><td>{row.compOffEligibility === 'ELIGIBLE' ? <select aria-label={`Comp-Off status for ${row.employeeName} ${row.workingDateLabel}`} value={row.compOffStatus} onChange={(event) => updateStatus(row.key, event.target.value)}><option>Pending</option><option>Availed</option><option>Expired</option></select> : '—'}</td><td title={row.policyNote}>{row.policyNote}</td>
+        <td>{row.employeeName || '—'}</td><td>{row.employeeCode || '—'}</td><td>{row.workingDateLabel}</td><td>{row.dayType}</td><td>{row.checkInStatus}</td><td className={row.attendanceStatus === 'P' ? 'comp-off-attendance-present' : row.attendanceStatus === 'WO' ? 'comp-off-attendance-wo' : ''}>{row.attendanceStatus}</td><td>{row.travelStart || '—'}</td><td>{row.travelStop || '—'}</td><td>{row.travelDuration || '—'}</td><td>{row.compOffEligibility}</td><td>{row.compOffEligibility === 'ELIGIBLE' ? <select aria-label={`Comp-Off status for ${row.employeeName} ${row.workingDateLabel}`} value={row.compOffStatus} onChange={(event) => updateStatus(row.key, event.target.value)}><option>Pending</option><option>Availed</option><option>Expired</option></select> : '—'}</td><td title={row.policyNote}>{row.policyNote}</td>
       </tr>)}{!shown.length && <tr><td colSpan={columns.length}>No Sunday or National Holiday records match these filters.</td></tr>}</tbody></table></div>
     </section>
     <p className="comp-off-footnote">No Check-In does not automatically create Present status. A night trip ending by noon next day is marked Review Required and not Present until its home destination is confirmed; evening Stop Time follows the Leave rule. Travel under 4 hours is flagged for destination review because the uploaded reports do not include employee home locations; where home travel is confirmed, retain the regular Week Off / National Holiday and do not grant Comp-Off. Leave labels are informational; this report does not change leave balances.</p>
